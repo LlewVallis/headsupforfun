@@ -1,7 +1,13 @@
 #![forbid(unsafe_code)]
 #![doc = "Portable solver interfaces and strategy infrastructure."]
 
+mod cfr;
+mod kuhn;
+
 use gto_core::{CoreBuildInfo, HoldemHandState, HoldemStateError, PlayerAction, build_info as core_build_info};
+
+pub use cfr::{CfrPlusSolver, ExtensiveGameState, GameNode};
+pub use kuhn::{KuhnAction, KuhnCard, KuhnInfoSet, KuhnState};
 
 /// Static build metadata for the solver crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +98,10 @@ impl std::error::Error for StubBotError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{SolverBuildInfo, SolverProfile, StubBot, build_info};
+    use super::{
+        CfrPlusSolver, KuhnAction, KuhnCard, KuhnInfoSet, KuhnState, SolverBuildInfo,
+        SolverProfile, StubBot, build_info,
+    };
     use gto_core::{HoldemConfig, HoldemHandState, PlayerAction};
 
     #[test]
@@ -143,5 +152,35 @@ mod tests {
         state.apply_action(PlayerAction::BetTo(100)).unwrap();
 
         assert_eq!(StubBot.choose_action(&state).unwrap(), PlayerAction::Call);
+    }
+
+    #[test]
+    fn kuhn_cfr_converges_to_the_known_game_value() {
+        let mut solver = CfrPlusSolver::new(KuhnState::new());
+        solver.train_iterations(20_000);
+
+        let value = solver.expected_value()[0];
+        assert!((value - (-1.0 / 18.0)).abs() < 0.03, "unexpected value {value}");
+    }
+
+    #[test]
+    fn kuhn_average_strategy_is_normalized() {
+        let mut solver = CfrPlusSolver::new(KuhnState::new());
+        solver.train_iterations(5_000);
+
+        let infoset = KuhnInfoSet {
+            player: 0,
+            private_card: KuhnCard::King,
+            history: Vec::new(),
+        };
+        let strategy = solver.average_strategy(&infoset).unwrap();
+        let probability_sum = strategy.iter().map(|(_, probability)| probability).sum::<f64>();
+
+        assert!((probability_sum - 1.0).abs() < 1e-9);
+        assert!(strategy.iter().all(|(_, probability)| probability.is_finite()));
+        assert_eq!(
+            strategy.iter().map(|(action, _)| *action).collect::<Vec<_>>(),
+            vec![KuhnAction::Check, KuhnAction::Bet]
+        );
     }
 }
