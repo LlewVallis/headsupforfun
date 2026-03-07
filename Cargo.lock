@@ -104,6 +104,7 @@ dependencies = [
 name = "gto-cli"
 version = "0.1.0"
 dependencies = [
+ "gto-core",
  "gto-solver",
 ]
 
