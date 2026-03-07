@@ -15,4 +15,9 @@ std = []
 serde = ["dep:serde"]
 
 [dependencies]
+rand = { workspace = true }
+rand_chacha = { workspace = true }
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

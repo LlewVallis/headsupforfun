@@ -1,7 +1,21 @@
 #![forbid(unsafe_code)]
 #![doc = "Portable building blocks for exact poker rules and domain types."]
 
+mod cards;
+mod deck;
+mod range;
+mod rng;
+
+pub use cards::{
+    Board, BoardError, Card, CardMask, DuplicateCardError, HoleCards, ParseCardError, Rank,
+    Suit,
+};
+pub use deck::Deck;
+pub use range::{ParseRangeError, Range};
+pub use rng::{DEFAULT_RNG_SEED, DeterministicRng, default_rng, rng_from_seed};
+
 /// Static build metadata that can be shared across frontends and tests.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CoreBuildInfo {
     pub crate_name: &'static str,
