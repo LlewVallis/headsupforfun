@@ -4,6 +4,7 @@
 mod cards;
 mod deck;
 mod hand_eval;
+mod holdem;
 mod range;
 mod rng;
 
@@ -15,6 +16,11 @@ pub use deck::Deck;
 pub use hand_eval::{
     EvaluateHandError, HandCategory, HandRank, HeadsUpPayout, OddChipRecipient, ShowdownError,
     ShowdownResult, award_pot_heads_up, evaluate_five, evaluate_seven, resolve_holdem_showdown,
+};
+pub use holdem::{
+    Chips, HandOutcome, HandPhase, HistoryEvent, HoldemConfig, HoldemConfigError,
+    HoldemHandState, HoldemStateError, LegalActions, Player, PlayerAction, PlayerSnapshot,
+    Street, WagerRange,
 };
 pub use range::{ParseRangeError, Range};
 pub use rng::{DEFAULT_RNG_SEED, DeterministicRng, default_rng, rng_from_seed};
