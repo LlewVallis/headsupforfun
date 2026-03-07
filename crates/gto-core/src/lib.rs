@@ -3,6 +3,7 @@
 
 mod cards;
 mod deck;
+mod hand_eval;
 mod range;
 mod rng;
 
@@ -11,6 +12,10 @@ pub use cards::{
     Suit,
 };
 pub use deck::Deck;
+pub use hand_eval::{
+    EvaluateHandError, HandCategory, HandRank, HeadsUpPayout, OddChipRecipient, ShowdownError,
+    ShowdownResult, award_pot_heads_up, evaluate_five, evaluate_seven, resolve_holdem_showdown,
+};
 pub use range::{ParseRangeError, Range};
 pub use rng::{DEFAULT_RNG_SEED, DeterministicRng, default_rng, rng_from_seed};
 
