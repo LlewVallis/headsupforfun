@@ -1,0 +1,20 @@
+[package]
+name = "gto-solver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+parallel = []
+serde = ["dep:serde", "gto-core/serde"]
+std = ["gto-core/std"]
+
+[dependencies]
+gto-core = { path = "../gto-core", default-features = false }
+serde = { workspace = true, optional = true }
