@@ -303,6 +303,9 @@ fn uniform(count: usize) -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+
     use super::{CfrCheckpoint, CfrCheckpointError, CfrPlusSolver, ExtensiveGameState, GameNode};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -344,6 +347,35 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum ChanceState {
+        Root,
+        Terminal([f64; 2]),
+    }
+
+    impl ExtensiveGameState for ChanceState {
+        type Action = ToyAction;
+        type InfoSet = ToyInfoSet;
+
+        fn node(&self) -> GameNode<Self::Action, Self::InfoSet, Self> {
+            match self {
+                Self::Root => GameNode::Chance {
+                    outcomes: vec![
+                        (Self::Terminal([1.0, -1.0]), 0.25),
+                        (Self::Terminal([-1.0, 1.0]), 0.75),
+                    ],
+                },
+                Self::Terminal(utilities) => GameNode::Terminal {
+                    utilities: *utilities,
+                },
+            }
+        }
+
+        fn next_state(&self, _action: &Self::Action) -> Self {
+            *self
+        }
+    }
+
     #[test]
     fn solver_can_be_constructed() {
         let solver = CfrPlusSolver::new(ToyState { terminal: false });
@@ -378,5 +410,76 @@ mod tests {
 
         let error = CfrPlusSolver::from_checkpoint(ToyState { terminal: false }, checkpoint).unwrap_err();
         assert_eq!(error, CfrCheckpointError::MismatchedVectorLengths);
+    }
+
+    #[test]
+    fn average_strategy_is_none_for_unknown_infoset() {
+        let solver = CfrPlusSolver::new(ToyState { terminal: false });
+        assert_eq!(solver.average_strategy(&ToyInfoSet), None);
+    }
+
+    #[test]
+    fn chance_only_game_expected_value_is_exact_and_has_no_infosets() {
+        let mut solver = CfrPlusSolver::new(ChanceState::Root);
+        solver.train_iterations(10);
+
+        assert_eq!(solver.infoset_count(), 0);
+        assert_eq!(solver.expected_value(), [-0.5, 0.5]);
+        assert!(solver.average_strategy_snapshot().is_empty());
+    }
+
+    #[test]
+    fn average_strategy_snapshot_is_normalized_and_finite_after_training() {
+        let mut solver = CfrPlusSolver::new(ToyState { terminal: false });
+        solver.train_iterations(25);
+
+        let snapshot = solver.average_strategy_snapshot();
+        assert_eq!(snapshot.len(), 1);
+        for (_infoset, actions) in snapshot {
+            let probability_sum = actions.iter().map(|(_, probability)| probability).sum::<f64>();
+            assert!((probability_sum - 1.0).abs() < 1e-9);
+            assert!(actions.iter().all(|(_, probability)| probability.is_finite()));
+        }
+    }
+
+    #[test]
+    fn checkpoint_restores_expected_values_and_average_strategy_snapshot() {
+        let mut solver = CfrPlusSolver::new(ToyState { terminal: false });
+        solver.train_iterations(50);
+        let expected_value = solver.expected_value();
+        let snapshot = solver.average_strategy_snapshot();
+
+        let restored = CfrPlusSolver::from_checkpoint(
+            ToyState { terminal: false },
+            solver.checkpoint(),
+        )
+        .unwrap();
+
+        assert_eq!(restored.expected_value(), expected_value);
+        assert_eq!(restored.average_strategy_snapshot(), snapshot);
+    }
+
+    #[test]
+    fn normalized_zero_weights_fall_back_to_uniform() {
+        assert_eq!(super::normalized(&[0.0, 0.0, 0.0]), vec![1.0 / 3.0; 3]);
+        assert!(super::uniform(0).is_empty());
+    }
+
+    proptest! {
+        #[test]
+        fn normalized_non_negative_weights_are_probabilities(weights in vec(0.0f64..10_000.0, 0..16)) {
+            let normalized = super::normalized(&weights);
+
+            prop_assert_eq!(normalized.len(), weights.len());
+            prop_assert!(normalized.iter().all(|value| value.is_finite()));
+            prop_assert!(normalized.iter().all(|value| *value >= 0.0));
+
+            if normalized.is_empty() {
+                prop_assert!(weights.is_empty());
+            } else {
+                let sum = normalized.iter().sum::<f64>();
+                prop_assert!((sum - 1.0).abs() < 1e-9, "sum={sum:?} normalized={normalized:?}");
+            }
+        }
     }
 }

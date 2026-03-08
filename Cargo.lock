@@ -283,6 +283,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "gto-core",
+ "proptest",
  "serde",
  "serde_json",
 ]

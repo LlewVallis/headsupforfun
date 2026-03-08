@@ -73,11 +73,13 @@ fn build_node(
 
 #[cfg(test)]
 mod tests {
-    use gto_core::{HoldemConfig, HoldemHandState, HandPhase};
+    use std::collections::HashSet;
+
+    use gto_core::{HandPhase, HoldemConfig, HoldemHandState, PlayerAction, Street};
 
     use crate::abstraction::{AbstractionProfile, OpeningSize, RaiseSize, StreetProfile};
 
-    use super::{PublicTreeNodeKind, build_public_tree};
+    use super::{PublicTree, PublicTreeNodeKind, build_public_tree};
 
     fn sample_profile() -> AbstractionProfile {
         let preflop = StreetProfile {
@@ -89,6 +91,34 @@ mod tests {
             opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
             raise_sizes: vec![RaiseSize::PotFractionAfterCallBps(10_000)],
             include_all_in: false,
+        };
+        AbstractionProfile::new(preflop, postflop.clone(), postflop.clone(), postflop)
+    }
+
+    fn larger_profile() -> AbstractionProfile {
+        let preflop = StreetProfile {
+            opening_sizes: vec![
+                OpeningSize::BigBlindMultipleBps(25_000),
+                OpeningSize::BigBlindMultipleBps(40_000),
+                OpeningSize::BigBlindMultipleBps(70_000),
+            ],
+            raise_sizes: vec![
+                RaiseSize::CurrentBetMultipleBps(25_000),
+                RaiseSize::PotFractionAfterCallBps(10_000),
+            ],
+            include_all_in: true,
+        };
+        let postflop = StreetProfile {
+            opening_sizes: vec![
+                OpeningSize::PotFractionBps(3_300),
+                OpeningSize::PotFractionBps(6_600),
+                OpeningSize::PotFractionBps(10_000),
+            ],
+            raise_sizes: vec![
+                RaiseSize::CurrentBetMultipleBps(25_000),
+                RaiseSize::PotFractionAfterCallBps(10_000),
+            ],
+            include_all_in: true,
         };
         AbstractionProfile::new(preflop, postflop.clone(), postflop.clone(), postflop)
     }
@@ -166,5 +196,161 @@ mod tests {
         }
 
         visit(state, tree.root, &tree);
+    }
+
+    #[test]
+    fn every_decision_node_has_unique_actions_and_valid_children() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let tree = build_public_tree(&state, &sample_profile()).unwrap();
+
+        for node in &tree.nodes {
+            if let PublicTreeNodeKind::Decision { actions } = &node.kind {
+                assert!(!actions.is_empty());
+                let unique = actions.iter().map(|edge| edge.action).collect::<HashSet<_>>();
+                assert_eq!(unique.len(), actions.len());
+                assert!(actions.iter().all(|edge| edge.child < tree.nodes.len()));
+            }
+        }
+    }
+
+    #[test]
+    fn replayed_public_states_match_tree_node_keys() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let tree = build_public_tree(&state, &sample_profile()).unwrap();
+
+        fn visit(state: HoldemHandState, node_index: usize, tree: &PublicTree) {
+            assert_eq!(tree.nodes[node_index].state, crate::PublicStateKey::from_state(&state));
+
+            if let PublicTreeNodeKind::Decision { actions } = &tree.nodes[node_index].kind {
+                for edge in actions {
+                    let mut next = state.clone();
+                    next.apply_action(edge.action.to_player_action()).unwrap();
+                    visit(next, edge.child, tree);
+                }
+            }
+        }
+
+        visit(state, tree.root, &tree);
+    }
+
+    #[test]
+    fn tree_edges_always_change_the_public_state() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let tree = build_public_tree(&state, &sample_profile()).unwrap();
+
+        for node in &tree.nodes {
+            if let PublicTreeNodeKind::Decision { actions } = &node.kind {
+                for edge in actions {
+                    assert_ne!(node.state, tree.nodes[edge.child].state);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn larger_preflop_abstraction_tree_builds_and_is_well_formed() {
+        let state = HoldemHandState::new(
+            HoldemConfig::new(600, 50, 100).unwrap(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let tree = build_public_tree(&state, &larger_profile()).unwrap();
+
+        assert!(tree.nodes.len() > 10);
+        assert!(matches!(
+            tree.nodes[tree.root].kind,
+            PublicTreeNodeKind::Decision { .. }
+        ));
+        assert!(tree.nodes.iter().any(|node| matches!(
+            node.kind,
+            PublicTreeNodeKind::Terminal { .. }
+        )));
+        assert!(tree.nodes.iter().any(|node| matches!(
+            node.kind,
+            PublicTreeNodeKind::AwaitingBoard {
+                next_street: Street::Flop
+            }
+        )));
+    }
+
+    #[test]
+    fn larger_flop_abstraction_tree_builds_and_stays_legal() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::new(600, 50, 100).unwrap(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let tree = build_public_tree(&state, &larger_profile()).unwrap();
+
+        fn visit(state: HoldemHandState, node_index: usize, tree: &PublicTree) {
+            match &tree.nodes[node_index].kind {
+                PublicTreeNodeKind::Decision { actions } => {
+                    assert!(!actions.is_empty());
+                    for edge in actions {
+                        let mut next_state = state.clone();
+                        next_state.apply_action(edge.action.to_player_action()).unwrap();
+                        visit(next_state, edge.child, tree);
+                    }
+                }
+                PublicTreeNodeKind::AwaitingBoard {
+                    next_street: Street::Turn,
+                }
+                | PublicTreeNodeKind::Terminal { .. } => {}
+                PublicTreeNodeKind::AwaitingBoard { next_street } => {
+                    panic!("unexpected street boundary {next_street:?}");
+                }
+            }
+        }
+
+        visit(state, tree.root, &tree);
+    }
+
+    #[test]
+    #[ignore]
+    fn larger_turn_abstraction_tree_stress_builds_without_invalid_edges() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::new(600, 50, 100).unwrap(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_turn("5s".parse().unwrap()).unwrap();
+
+        let tree = build_public_tree(&state, &larger_profile()).unwrap();
+        assert!(tree.nodes.len() > 20);
+        assert!(tree.nodes.iter().all(|node| match &node.kind {
+            PublicTreeNodeKind::Decision { actions } => !actions.is_empty(),
+            _ => true,
+        }));
     }
 }
