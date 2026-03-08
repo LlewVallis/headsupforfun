@@ -10,6 +10,7 @@ import {
   actionPrompt,
   botLabel,
   buildPlayerSessionConfig,
+  currentStreetBotActionLabel,
   extractBotActionLabel,
   formatBigBlinds,
   heroLabel,
@@ -27,6 +28,8 @@ type BotPresence =
 type SeatBubble =
   | { tone: 'thinking'; label: string }
   | { tone: 'action'; label: string }
+
+const BOT_VISIBLE_THINK_BUFFER_MS = 80
 
 function App() {
   const clientRef = useRef<PokerClient | null>(null)
@@ -80,7 +83,7 @@ function App() {
     if (!snapshot) {
       return null
     }
-    return extractBotActionLabel(null, snapshot)
+    return currentStreetBotActionLabel(snapshot)
   }, [snapshot])
 
   const boardCards = fillBoardCards(snapshot?.boardCards ?? [])
@@ -153,11 +156,11 @@ function App() {
         previousSnapshot.currentActor === previousSnapshot.botSeat
       ) {
         setBotPresence({ state: 'thinking' })
-        const thinkStartedAt = performance.now()
         await waitForNextPaint()
+        const minimumThink = sleep(BOT_MIN_THINK_MS + BOT_VISIBLE_THINK_BUFFER_MS)
         const afterBotSnapshot = await client.advanceBot()
         await transitionSnapshot(previousSnapshot, afterBotSnapshot)
-        await waitForMinimumThink(thinkStartedAt)
+        await minimumThink
 
         if (afterBotSnapshot.terminalSummary) {
           setBotPresence({ state: 'idle' })
@@ -254,15 +257,6 @@ function App() {
       })
       await waitForNextPaint()
     }
-  }
-
-  async function waitForMinimumThink(startedAt: number): Promise<void> {
-    const elapsed = performance.now() - startedAt
-    if (elapsed >= BOT_MIN_THINK_MS) {
-      return
-    }
-
-    await sleep(BOT_MIN_THINK_MS - elapsed)
   }
 
   async function initializeSession(
@@ -434,7 +428,7 @@ function App() {
                         : heroPromptTurn
                           ? latestBotActionLabel
                             ? `${botLabel()} ${latestBotActionLabel.toLowerCase()}.`
-                            : 'Choose from the available abstract actions below the table.'
+                            : 'Choose from the available actions below the table.'
                           : 'The next action will appear beside the bot seat.'}
                     </p>
                   </div>

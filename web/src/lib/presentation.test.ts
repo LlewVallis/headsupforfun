@@ -7,6 +7,7 @@ import {
   BOARD_REVEAL_STEP_MS,
   actionPrompt,
   buildPlayerSessionConfig,
+  currentStreetBotActionLabel,
   defaultTestSeed,
   extractBotActionLabel,
   formatBigBlinds,
@@ -79,7 +80,7 @@ describe('presentation helpers', () => {
       'Turn: You raise to 9.5 BB',
     )
     expect(humanizeHistoryEntry('turn: big-blind calls', snapshot)).toBe(
-      'Turn: Solver Bot calls',
+      'Turn: Bot calls',
     )
   })
 
@@ -106,10 +107,51 @@ describe('presentation helpers', () => {
       headline: 'You win the pot',
       detail: '12.0 BB at showdown',
     })
+    expect(presentTerminalSummary('big-blind wins uncontested for 1.5 bb', snapshot)).toEqual({
+      headline: 'Bot wins the pot',
+      detail: '1.5 BB without showdown',
+    })
+    expect(
+      presentTerminalSummary('big-blind wins uncontested for 1.5 bb', {
+        humanSeat: 'bigBlind',
+        botSeat: 'button',
+      }),
+    ).toEqual({
+      headline: 'You win the pot',
+      detail: '1.5 BB without showdown',
+    })
     expect(presentTerminalSummary('showdown split pot for 4.5 bb', snapshot)).toEqual({
       headline: 'Split pot',
       detail: '4.5 BB',
     })
+  })
+
+  it('only keeps the bot action detail when it happened on the current street', () => {
+    expect(
+      currentStreetBotActionLabel({
+        ...snapshot,
+        street: 'flop',
+        history: [
+          'button posts 0.5 bb',
+          'big-blind posts 1.0 bb',
+          'preflop: big-blind raises to 4.0 bb',
+          'preflop: button calls',
+          'flop: As Kd 7h',
+        ],
+      }),
+    ).toBeNull()
+
+    expect(
+      currentStreetBotActionLabel({
+        ...snapshot,
+        street: 'turn',
+        history: [
+          'button posts 0.5 bb',
+          'big-blind posts 1.0 bb',
+          'turn: big-blind bets to 12.0 bb',
+        ],
+      }),
+    ).toBe('Bets to 12.0 BB')
   })
 
   it('provides simple display helpers for the table UI', () => {
@@ -119,7 +161,7 @@ describe('presentation helpers', () => {
     expect(actionPrompt({ ...snapshot, terminalSummary: 'button wins uncontested for 1.5 bb' }, false)).toBe(
       'Hand complete',
     )
-    expect(actionPrompt(snapshot, true)).toBe('Solver Bot is thinking...')
+    expect(actionPrompt(snapshot, true)).toBe('Bot is thinking...')
     expect(BOT_ACTION_BUBBLE_MS).toBeGreaterThan(0)
     expect(BOT_MIN_THINK_MS).toBeGreaterThan(0)
     expect(BOARD_REVEAL_STEP_MS).toBeGreaterThan(0)

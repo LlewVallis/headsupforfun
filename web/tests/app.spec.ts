@@ -15,9 +15,10 @@ test('plays a complete browser hand and can continue after the terminal state', 
   await expect(page.getByLabel('Poker table')).toBeVisible()
   await expect(page.getByLabel('Action tray')).not.toContainText('hybrid play mode')
   await expect(page.getByLabel('Hero panel')).toContainText('You')
-  await expect(page.getByLabel('Bot panel')).toContainText('Solver Bot')
+  await expect(page.getByLabel('Bot panel')).toContainText('Bot')
   await expect(page.getByText('Hand 1')).toBeVisible()
   await expect(page.getByText('Seed')).toHaveCount(0)
+  await expect(page.getByText(/abstract/i)).toHaveCount(0)
   await expect(page.getByLabel('Action tray').getByRole('button', { name: /All-in to/i })).toBeVisible()
 
   for (let step = 0; step < 64; step += 1) {
@@ -102,10 +103,10 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
   await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
   await expect(page.locator('.action-bubble')).toHaveCount(1)
   await expect(page.getByText('Pick your action')).toBeVisible()
-  await expect(page.getByText(/Solver Bot .*bb\./i)).toBeVisible()
+  await expect(page.getByText(/Bot .*bb\./i)).toBeVisible()
   await expect(page.locator('.action-bubble')).toHaveCount(0, { timeout: 5_000 })
   await expect(page.getByText('Pick your action')).toBeVisible()
-  await expect(page.getByText(/Solver Bot .*bb\./i)).toBeVisible()
+  await expect(page.getByText(/Bot .*bb\./i)).toBeVisible()
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {

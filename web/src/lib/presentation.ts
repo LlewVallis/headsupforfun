@@ -71,7 +71,7 @@ export function heroLabel(): string {
 }
 
 export function botLabel(): string {
-  return 'Solver Bot'
+  return 'Bot'
 }
 
 export function humanizeHistoryEntry(
@@ -81,7 +81,7 @@ export function humanizeHistoryEntry(
   const blindMatch = entry.match(/^(button|big-blind) posts (.+)$/)
   if (blindMatch) {
     const seat = blindMatch[1] as WebSeatToken
-    const verb = seat === snapshot.humanSeat ? 'post' : 'posts'
+    const verb = seat === seatToken(snapshot.humanSeat) ? 'post' : 'posts'
     return `${labelForSeat(seat, snapshot)} ${verb} ${normalizeBigBlindText(blindMatch[2])}`
   }
 
@@ -90,7 +90,7 @@ export function humanizeHistoryEntry(
     const [, street, seat, phrase] = actionMatch
     return `${titleCase(street)}: ${subjectForSeat(seat as WebSeatToken, snapshot)} ${toDisplayPhrase(
       phrase,
-      seat === snapshot.humanSeat,
+      seat === seatToken(snapshot.humanSeat),
     )}`
   }
 
@@ -144,6 +144,10 @@ export function extractBotActionLabel(
   previous: WebSessionSnapshot | null,
   next: WebSessionSnapshot,
 ): string | null {
+  if (!previous) {
+    return currentStreetBotActionLabel(next)
+  }
+
   const botHistory = next.history.slice(previous?.history.length ?? 0)
   const token = seatToken(next.botSeat)
 
@@ -159,9 +163,24 @@ export function extractBotActionLabel(
   return null
 }
 
+export function currentStreetBotActionLabel(snapshot: WebSessionSnapshot): string | null {
+  const token = seatToken(snapshot.botSeat)
+
+  for (const entry of [...snapshot.history].reverse()) {
+    const actionMatch = entry.match(/^(preflop|flop|turn|river): (button|big-blind) (.+)$/)
+    if (!actionMatch || actionMatch[1] !== snapshot.street || actionMatch[2] !== token) {
+      continue
+    }
+
+    return titleCase(toDisplayPhrase(actionMatch[3], false))
+  }
+
+  return null
+}
+
 export function actionPrompt(snapshot: WebSessionSnapshot, busy: boolean): string {
   if (busy) {
-    return 'Solver Bot is thinking...'
+    return 'Bot is thinking...'
   }
 
   if (snapshot.terminalSummary) {
@@ -185,21 +204,21 @@ function labelForSeat(
   seat: WebSeatToken,
   snapshot: Pick<WebSessionSnapshot, 'humanSeat' | 'botSeat'>,
 ): string {
-  return seat === snapshot.humanSeat ? heroLabel() : botLabel()
+  return seat === seatToken(snapshot.humanSeat) ? heroLabel() : botLabel()
 }
 
 function subjectForSeat(
   seat: WebSeatToken,
   snapshot: Pick<WebSessionSnapshot, 'humanSeat' | 'botSeat'>,
 ): string {
-  return seat === snapshot.humanSeat ? heroLabel() : botLabel()
+  return seat === seatToken(snapshot.humanSeat) ? heroLabel() : botLabel()
 }
 
 function winnerHeadline(
   seat: WebSeatToken,
   snapshot: Pick<WebSessionSnapshot, 'humanSeat' | 'botSeat'>,
 ): string {
-  return seat === snapshot.humanSeat ? 'You win the pot' : 'Solver Bot wins the pot'
+  return seat === seatToken(snapshot.humanSeat) ? 'You win the pot' : 'Bot wins the pot'
 }
 
 function humanizeOutcomeEntry(

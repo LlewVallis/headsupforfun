@@ -682,7 +682,7 @@ impl HoldemHandState {
         });
         self.street = dealt_street;
 
-        if self.players_all_in() {
+        if self.betting_is_locked_by_all_in() {
             if let Some(next_street) = self.street.next() {
                 self.phase = HandPhase::AwaitingBoard { next_street };
             } else {
@@ -820,11 +820,16 @@ impl HoldemHandState {
         &mut self.players[player.index()]
     }
 
-    fn players_all_in(&self) -> bool {
-        self.players
-            .iter()
-            .filter(|player| !player.folded)
-            .all(|player| player.stack == 0)
+    fn betting_is_locked_by_all_in(&self) -> bool {
+        let mut active_player_count = 0_u8;
+        let mut any_active_player_all_in = false;
+
+        for player in self.players.iter().filter(|player| !player.folded) {
+            active_player_count += 1;
+            any_active_player_all_in |= player.stack == 0;
+        }
+
+        active_player_count == 2 && any_active_player_all_in
     }
 
     fn contribute(&mut self, player: Player, amount: Chips) {
@@ -1229,6 +1234,48 @@ mod tests {
                 player_two: 0,
             }
         );
+    }
+
+    #[test]
+    fn called_all_in_with_a_covering_stack_still_forces_a_runout() {
+        let config = HoldemConfig::default();
+        let mut state = HoldemHandState::new_with_starting_stacks(
+            config,
+            "AhAd".parse().unwrap(),
+            "KhKd".parse().unwrap(),
+            300,
+            10_000,
+        )
+        .unwrap();
+
+        state.apply_action(PlayerAction::AllIn).unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+
+        assert_eq!(
+            state.phase(),
+            HandPhase::AwaitingBoard {
+                next_street: Street::Flop,
+            }
+        );
+
+        state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
+        assert_eq!(
+            state.phase(),
+            HandPhase::AwaitingBoard {
+                next_street: Street::Turn,
+            }
+        );
+
+        state.deal_turn("5s".parse().unwrap()).unwrap();
+        assert_eq!(
+            state.phase(),
+            HandPhase::AwaitingBoard {
+                next_street: Street::River,
+            }
+        );
+
+        state.deal_river("7c".parse().unwrap()).unwrap();
+        assert!(matches!(state.current_outcome(), Some(HandOutcome::Showdown { .. })));
     }
 
     #[test]

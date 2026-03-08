@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { BOARD_REVEAL_STEP_MS, BOT_ACTION_BUBBLE_MS } from './lib/presentation'
+import { BOARD_REVEAL_STEP_MS, BOT_ACTION_BUBBLE_MS, BOT_MIN_THINK_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
 const baseSnapshot: WebSessionSnapshot = {
@@ -122,6 +122,7 @@ describe('App', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     delete (globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__
   })
 
@@ -134,10 +135,11 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: 'New match' })).toBeInTheDocument()
     expect(await screen.findByLabelText('Poker table')).toBeInTheDocument()
     expect(screen.getByLabelText('Hero panel')).toHaveTextContent('You')
-    expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Solver Bot')
+    expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Bot')
     expect(screen.getByLabelText('Action tray')).not.toHaveTextContent('hybrid play mode')
     expect(screen.queryByText('Session activity')).not.toBeInTheDocument()
     expect(screen.queryByText('Seed')).not.toBeInTheDocument()
+    expect(screen.queryByText(/abstract/i)).not.toBeInTheDocument()
   })
 
   it('initializes the table with the fixed hybrid-play bot mode', async () => {
@@ -199,7 +201,7 @@ describe('App', () => {
   })
 
   it(
-    'reveals the flop one card at a time before the bot starts thinking',
+    'reveals the flop one card at a time before the bot starts thinking and keeps thinking visible for at least 0.5s',
     async () => {
       const user = userEvent.setup()
 
@@ -235,33 +237,34 @@ describe('App', () => {
 
       expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
       expect(screen.getByText('Watch the bot respond')).toBeInTheDocument()
-      await waitFor(
-        () => expect(countVisibleBoardCards()).toBe(1),
-        { timeout: BOARD_REVEAL_STEP_MS + 500 },
-      )
+      await waitFor(() => expect(countVisibleBoardCards()).toBe(1), {
+        timeout: BOARD_REVEAL_STEP_MS + 500,
+      })
       expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
-      await waitFor(
-        () => expect(countVisibleBoardCards()).toBe(2),
-        { timeout: (BOARD_REVEAL_STEP_MS * 2) + 500 },
-      )
+      await waitFor(() => expect(countVisibleBoardCards()).toBe(2), {
+        timeout: (BOARD_REVEAL_STEP_MS * 2) + 500,
+      })
       expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
-      await waitFor(
-        () => expect(countVisibleBoardCards()).toBe(3),
-        { timeout: (BOARD_REVEAL_STEP_MS * 3) + 500 },
-      )
+      await waitFor(() => expect(countVisibleBoardCards()).toBe(3), {
+        timeout: (BOARD_REVEAL_STEP_MS * 3) + 500,
+      })
       await waitFor(() => expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking'))
       await waitFor(() => expect(advanceBotMock).toHaveBeenCalledTimes(1))
+      const thinkingStartedAt = Date.now()
 
       await act(async () => {
         resolveBotAction?.(postActionSnapshot)
         await Promise.resolve()
       })
 
+      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
+
       expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
+      expect(Date.now() - thinkingStartedAt).toBeGreaterThanOrEqual(BOT_MIN_THINK_MS)
       expect(screen.getByText('Pick your action')).toBeInTheDocument()
-      expect(screen.getByText('Solver Bot bets to 4.0 bb.')).toBeInTheDocument()
+      expect(screen.getByText('Bot bets to 4.0 bb.')).toBeInTheDocument()
     },
-    10_000,
+    12_000,
   )
 
   it('fades the bot action bubble after a short delay', async () => {
@@ -280,6 +283,78 @@ describe('App', () => {
 
     expect(screen.queryByText('Bets to 4.0 BB')).not.toBeInTheDocument()
     expect(screen.getByText('Pick your action')).toBeInTheDocument()
-    expect(screen.getByText('Solver Bot bets to 4.0 bb.')).toBeInTheDocument()
+    expect(screen.getByText('Bot bets to 4.0 bb.')).toBeInTheDocument()
   }, 10_000)
+
+  it('shows neutral guidance when the hero is first to act on a street', async () => {
+    initMock.mockResolvedValueOnce({
+      ...baseSnapshot,
+      street: 'flop',
+      boardCards: ['Ah', '7d', '2c'],
+      history: [
+        'button posts 0.5 bb',
+        'big-blind posts 1.0 bb',
+        'preflop: button raises to 4.0 bb',
+        'preflop: big-blind calls',
+        'flop: Ah 7d 2c',
+      ],
+      legalActions: [{ id: 'check', label: 'Check' }],
+      status: 'Your turn on flop.',
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Pick your action')).toBeInTheDocument()
+    expect(screen.getByText('Choose from the available actions below the table.')).toBeInTheDocument()
+    expect(screen.queryByText(/Bot raises to 4\.0 bb\./i)).not.toBeInTheDocument()
+  })
+
+  it('updates the terminal winner text when the next hand rotates seats and the bot folds first', async () => {
+    initMock.mockResolvedValueOnce(terminalSnapshot)
+    resetHandMock.mockResolvedValueOnce({
+      handNumber: 2,
+      humanSeat: 'bigBlind',
+      botSeat: 'button',
+      botMode: 'hybridPlay',
+      matchOver: false,
+      street: 'preflop',
+      phase: 'terminal',
+      currentActor: null,
+      pot: 150,
+      boardCards: [],
+      button: {
+        seat: 'button',
+        stack: 9850,
+        totalContribution: 50,
+        streetContribution: 50,
+        folded: true,
+        holeCards: ['Qc', 'Qd'],
+      },
+      bigBlind: {
+        seat: 'bigBlind',
+        stack: 10150,
+        totalContribution: 100,
+        streetContribution: 100,
+        folded: false,
+        holeCards: ['As', 'Kd'],
+      },
+      legalActions: [],
+      history: [
+        'button posts 0.5 bb',
+        'big-blind posts 1.0 bb',
+        'preflop: button folds',
+        'big-blind wins uncontested for 1.5 bb',
+      ],
+      status: 'Hand complete.',
+      terminalSummary: 'big-blind wins uncontested for 1.5 bb',
+    })
+
+    render(<App />)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Deal next hand' }))
+
+    expect(await screen.findByText('You win the pot')).toBeInTheDocument()
+    expect(screen.queryByText('Bot wins the pot')).not.toBeInTheDocument()
+  })
 })

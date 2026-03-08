@@ -639,6 +639,7 @@ impl From<HoldemStateError> for WebSessionError {
 #[cfg(test)]
 mod tests {
     use super::{BrowserSession, WebBotMode, WebSeat, WebSessionConfig};
+    use gto_core::{HandPhase, HoldemConfig, HoldemHandState, PlayerAction};
     use gto_solver::FullHandBlueprintArtifact;
     use std::collections::BTreeSet;
 
@@ -871,6 +872,38 @@ mod tests {
         }
 
         panic!("expected browser session to complete the hand within the action budget");
+    }
+
+    #[test]
+    fn browser_session_runs_out_the_board_after_a_called_all_in_against_a_covering_stack() {
+        let mut session = BrowserSession::new(WebSessionConfig::default()).unwrap();
+        session.deal = super::DealtHand {
+            button: "AhAd".parse().unwrap(),
+            big_blind: "KhKd".parse().unwrap(),
+            board: [
+                "2c".parse().unwrap(),
+                "3d".parse().unwrap(),
+                "4h".parse().unwrap(),
+                "5s".parse().unwrap(),
+                "7c".parse().unwrap(),
+            ],
+        };
+        session.state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            session.deal.button,
+            session.deal.big_blind,
+            300,
+            10_000,
+        )
+        .unwrap();
+        session.state.apply_action(PlayerAction::AllIn).unwrap();
+        session.state.apply_action(PlayerAction::Call).unwrap();
+
+        session.advance_until_next_decision_or_terminal().unwrap();
+
+        assert_eq!(session.state.board().cards().len(), 5);
+        assert!(matches!(session.state.phase(), HandPhase::Terminal { .. }));
+        assert!(session.state.current_outcome().is_some());
     }
 
     fn preferred_action_id(snapshot: &super::WebSessionSnapshot) -> String {
