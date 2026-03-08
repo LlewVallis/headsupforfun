@@ -1,44 +1,60 @@
-:root {
-  font-family:
-    "Iowan Old Style",
-    "Palatino Linotype",
-    "Book Antiqua",
-    Palatino,
-    Georgia,
-    serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #f5eedc;
-  background:
-    radial-gradient(circle at top, rgba(37, 88, 64, 0.28), transparent 32%),
-    linear-gradient(180deg, #11261d 0%, #09110d 100%);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@import "tailwindcss";
+
+@theme {
+  --color-felt-950: #09110d;
+  --color-felt-900: #102116;
+  --color-felt-850: #123a2b;
+  --color-gold-300: #dbc58d;
+  --color-gold-400: #dec37d;
+  --color-gold-500: #b38935;
+  --color-ivory-50: #f7f2e6;
+  --color-ivory-100: #f5eedc;
+  --color-ivory-200: #d8d0be;
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  :root {
+    color: var(--color-ivory-100);
+    font-family:
+      "Iowan Old Style",
+      "Palatino Linotype",
+      "Book Antiqua",
+      Palatino,
+      Georgia,
+      serif;
+    font-synthesis: none;
+    line-height: 1.5;
+    font-weight: 400;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-html,
-body,
-#root {
-  min-height: 100%;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-body {
-  margin: 0;
-}
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at top, rgb(37 88 64 / 28%), transparent 32%),
+      linear-gradient(180deg, #11261d 0%, #09110d 100%);
+  }
 
-a {
-  color: inherit;
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  a {
+    color: inherit;
+  }
 }
