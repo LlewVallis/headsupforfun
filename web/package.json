@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "pretest:e2e": "npm run wasm:build:dev",
     "test:e2e": "playwright test",
+    "screenshots": "playwright test --config=playwright.screenshots.config.ts",
     "validate": "npm run test && npm run test:e2e && npm run build"
   },
   "dependencies": {
