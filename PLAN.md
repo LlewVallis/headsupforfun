@@ -643,6 +643,25 @@ Constraints for this phase:
 5. Reuse the existing abstract action menu instead of introducing arbitrary bet sizing.
 6. Treat runtime postflop solving in the browser as a product requirement for the stronger production build, but gate it behind measured browser responsiveness during implementation.
 
+### Frontend Testing Strategy
+
+Testing for the web phase should mirror the repo's existing emphasis on deterministic, heavily automated validation.
+
+Recommended layers:
+
+- `Vitest` plus `React Testing Library` for component, hook, and client-state tests
+- Worker-focused tests for command/response flow, initialization errors, and typed message handling
+- `Playwright` for browser integration tests that play seeded hands end to end
+- Deterministic seeded fixtures and debug states so UI and browser tests can reproduce the same poker situations reliably
+
+Principles:
+
+- Keep browser tests deterministic by controlling RNG seeds and using stable bot/action modes
+- Test the typed frontend client separately from the React component tree
+- Prefer browser integration coverage for real user flows instead of relying only on DOM snapshots
+- Add regression coverage for worker startup failures, artifact-load failures, and slow/failed bot action fallbacks
+- Keep the fast frontend test loop small enough for frequent use; reserve heavier Playwright scenarios for a slower explicit lane
+
 ### Recommended Workspace Layout Update
 
 ```text
