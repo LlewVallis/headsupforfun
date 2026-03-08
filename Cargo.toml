@@ -3,12 +3,14 @@ members = [
     "crates/gto-core",
     "crates/gto-solver",
     "crates/gto-cli",
+    "crates/gto-web",
     "xtask",
 ]
 default-members = [
     "crates/gto-core",
     "crates/gto-solver",
     "crates/gto-cli",
+    "crates/gto-web",
     "xtask",
 ]
 resolver = "2"
@@ -27,3 +29,5 @@ rand = { version = "0.9.2", default-features = false, features = ["std"] }
 rand_chacha = { version = "0.9.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = "1.0.145"
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.100"

@@ -1,42 +1,174 @@
-#root {
-  max-width: 1280px;
+.app-shell {
+  width: min(1100px, calc(100vw - 3rem));
   margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.hero-panel,
+.table-panel,
+.status-card {
+  border: 1px solid rgba(245, 234, 201, 0.18);
+  background:
+    linear-gradient(180deg, rgba(18, 58, 43, 0.95), rgba(10, 31, 24, 0.98)),
+    #0c2118;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.hero-panel {
   padding: 2rem;
+  border-radius: 28px 28px 12px 12px;
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #dbc58d;
+}
+
+.hero-panel h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 5vw, 4.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.hero-copy {
+  width: min(40rem, 100%);
+  margin: 1rem 0 0;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: rgba(245, 238, 220, 0.82);
+}
+
+.table-panel {
+  position: relative;
+  margin-top: 1rem;
+  padding: 2rem;
+  border-radius: 12px 12px 28px 28px;
+  min-height: 22rem;
+  display: grid;
+  align-items: center;
+}
+
+.table-panel::before {
+  content: '';
+  position: absolute;
+  inset: 1.5rem;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 38%),
+    radial-gradient(circle at center, rgba(33, 126, 86, 0.9), rgba(9, 56, 37, 0.96));
+  box-shadow:
+    inset 0 0 0 18px rgba(93, 56, 30, 0.75),
+    inset 0 0 0 20px rgba(224, 196, 134, 0.14);
+}
+
+.seat,
+.board {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.seat {
+  justify-content: space-between;
+  font-size: 0.98rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.seat-top {
+  align-self: start;
+}
+
+.seat-bottom {
+  align-self: end;
+}
+
+.seat-label,
+.board-label {
+  color: rgba(245, 234, 201, 0.88);
+}
+
+.seat-stack,
+.pot-label {
+  color: rgba(245, 238, 220, 0.7);
+}
+
+.board {
+  flex-direction: column;
+  gap: 0.9rem;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.card-row {
+  display: flex;
+  gap: 0.9rem;
+  justify-content: center;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.card-slot {
+  width: 4rem;
+  height: 5.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  border: 1px solid rgba(245, 234, 201, 0.24);
+  background: linear-gradient(180deg, rgba(247, 241, 226, 0.96), rgba(216, 208, 190, 0.9));
+  color: #192019;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.status-card {
+  border-radius: 24px;
+  padding: 1.4rem 1.5rem;
+}
+
+.status-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.status-card p {
+  margin: 0.35rem 0;
+  color: rgba(245, 238, 220, 0.78);
+  line-height: 1.55;
+}
+
+@media (max-width: 800px) {
+  .app-shell {
+    width: min(100vw - 1.5rem, 1100px);
+    padding-top: 1.5rem;
   }
-  to {
-    transform: rotate(360deg);
+
+  .table-panel {
+    min-height: 18rem;
+    padding: 1.4rem;
   }
-}
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  .table-panel::before {
+    inset: 1rem;
   }
-}
 
-.card {
-  padding: 2em;
-}
+  .card-slot {
+    width: 2.9rem;
+    height: 4rem;
+    border-radius: 12px;
+    font-size: 1.1rem;
+  }
 
-.read-the-docs {
-  color: #888;
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
 }

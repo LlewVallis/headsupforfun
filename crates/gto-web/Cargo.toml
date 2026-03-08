@@ -1,0 +1,18 @@
+[package]
+name = "gto-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gto-core = { path = "../gto-core", default-features = false, features = ["std", "serde"] }
+gto-solver = { path = "../gto-solver", default-features = false, features = ["std", "serde"] }
+serde = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+wasm-bindgen = { workspace = true }
