@@ -81,6 +81,13 @@ function App() {
     return snapshot.botSeat === 'button' ? snapshot.button : snapshot.bigBlind
   }, [snapshot])
 
+  const sessionModeLabel = readableBotMode(selectedBotMode)
+  const activityLabel = loading
+    ? 'Booting the worker-backed Rust session.'
+    : busy
+      ? 'Worker is resolving the current poker state.'
+      : 'Worker is idle. Seeded actions remain reproducible.'
+
   const handleStartSession = async () => {
     const client = clientRef.current
     if (!client) {
@@ -267,15 +274,59 @@ function App() {
         </div>
       </section>
 
+      <section
+        className={`${PANEL_CLASS} mt-4 flex flex-col gap-3 rounded-2xl px-5 py-4 md:flex-row md:items-center md:justify-between`}
+        aria-label="Session activity"
+      >
+        <div>
+          <p className="m-0 text-[0.76rem] uppercase tracking-[0.18em] text-amber-200">
+            Session activity
+          </p>
+          <p className="mt-2 text-sm leading-6 text-stone-200/82 md:text-base">
+            {activityLabel}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[0.76rem] uppercase tracking-[0.14em] text-amber-50/82">
+          <span className="rounded-full border border-amber-100/18 bg-black/20 px-3 py-2">
+            Seed {parseSeed(seedInput)}
+          </span>
+          <span className="rounded-full border border-amber-100/18 bg-black/20 px-3 py-2">
+            {sessionModeLabel}
+          </span>
+          <span
+            className={joinClasses(
+              'rounded-full border px-3 py-2',
+              busy
+                ? 'border-amber-200/30 bg-amber-200/14 text-amber-50'
+                : 'border-emerald-200/20 bg-emerald-200/12 text-emerald-100',
+            )}
+          >
+            {busy ? 'Busy' : 'Ready'}
+          </span>
+        </div>
+      </section>
+
       {error ? (
         <section
           className={`${PANEL_CLASS} mt-4 rounded-2xl border-rose-300/20 px-5 py-4`}
           role="alert"
         >
-          <strong className="text-sm uppercase tracking-[0.16em] text-rose-100">
-            Worker error
-          </strong>
-          <p className="mt-2 text-sm leading-6 text-stone-200/82">{error}</p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <strong className="text-sm uppercase tracking-[0.16em] text-rose-100">
+                Worker error
+              </strong>
+              <p className="mt-2 text-sm leading-6 text-stone-200/82">{error}</p>
+            </div>
+            <button
+              type="button"
+              className={SECONDARY_BUTTON_CLASS}
+              onClick={handleStartSession}
+              disabled={busy}
+            >
+              Retry session
+            </button>
+          </div>
         </section>
       ) : null}
 

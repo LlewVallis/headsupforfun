@@ -5,8 +5,14 @@ import type { PokerWorkerRequest, PokerWorkerResponse } from '../lib/pokerTypes'
 import { PokerWorkerRuntime } from './pokerWorkerRuntime'
 
 const worker = self as DedicatedWorkerGlobalScope
+const forcedInitError = new URL(worker.location.href).searchParams.get(
+  'forceInitError',
+)
 const runtime = new PokerWorkerRuntime({
-  initWasm: () => init(),
+  initWasm: () =>
+    forcedInitError
+      ? Promise.reject(new Error(forcedInitError))
+      : init(),
   createSession: (config) => new PokerSession(config),
 })
 

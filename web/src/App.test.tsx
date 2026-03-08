@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
@@ -54,6 +55,13 @@ vi.mock('./lib/pokerClient', () => ({
 import App from './App'
 
 describe('App', () => {
+  beforeEach(() => {
+    initMock.mockResolvedValue(mockSnapshot)
+    resetHandMock.mockResolvedValue(mockSnapshot)
+    applyHumanActionMock.mockResolvedValue(mockSnapshot)
+    disposeMock.mockClear()
+  })
+
   it('renders the Rust-backed poker UI shell', async () => {
     render(<App />)
 
@@ -64,5 +72,20 @@ describe('App', () => {
     expect(await screen.findByText('Call')).toBeInTheDocument()
     expect(screen.getByLabelText('Poker table')).toBeInTheDocument()
     expect(screen.getByLabelText('Hand history')).toBeInTheDocument()
+    expect(screen.getByLabelText('Session activity')).toHaveTextContent('Ready')
+  })
+
+  it('shows a recoverable worker error banner when initialization fails', async () => {
+    initMock.mockRejectedValueOnce(new Error('init failed'))
+
+    render(<App />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('init failed')
+
+    const user = userEvent.setup()
+    initMock.mockResolvedValueOnce(mockSnapshot)
+    await user.click(screen.getByRole('button', { name: 'Retry session' }))
+
+    expect(await screen.findByText('Call')).toBeInTheDocument()
   })
 })

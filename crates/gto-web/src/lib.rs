@@ -570,6 +570,7 @@ impl From<HoldemStateError> for WebSessionError {
 mod tests {
     use super::{BrowserSession, WebBotMode, WebSeat, WebSessionConfig};
     use gto_solver::FullHandBlueprintArtifact;
+    use std::collections::BTreeSet;
 
     #[test]
     fn new_session_exposes_hero_decision_or_terminal_state() {
@@ -642,5 +643,105 @@ mod tests {
 
         let snapshot = session.snapshot().unwrap();
         assert_eq!(snapshot.bot_mode, WebBotMode::Blueprint);
+    }
+
+    #[test]
+    fn seeded_blueprint_sessions_are_reproducible_under_same_human_policy() {
+        let config = WebSessionConfig {
+            seed: 17,
+            bot_mode: WebBotMode::Blueprint,
+            ..WebSessionConfig::default()
+        };
+        let mut left = BrowserSession::new(config.clone()).unwrap();
+        let mut right = BrowserSession::new(config).unwrap();
+
+        for _ in 0..24 {
+            let left_snapshot = left.snapshot().unwrap();
+            let right_snapshot = right.snapshot().unwrap();
+            assert_eq!(left_snapshot, right_snapshot);
+
+            if left_snapshot.terminal_summary.is_some() {
+                return;
+            }
+
+            let action_id = preferred_action_id(&left_snapshot);
+            let next_left = left.apply_human_action(&action_id).unwrap();
+            let next_right = right.apply_human_action(&action_id).unwrap();
+            assert_eq!(next_left, next_right);
+        }
+
+        panic!("expected seeded sessions to reach a terminal state within the action budget");
+    }
+
+    #[test]
+    fn browser_session_exposes_unique_legal_actions_and_reaches_terminal_state() {
+        for bot_mode in [WebBotMode::Blueprint, WebBotMode::HybridFast] {
+            for seed in [3_u64, 7, 19] {
+                let mut session = BrowserSession::new(WebSessionConfig {
+                    seed,
+                    bot_mode,
+                    ..WebSessionConfig::default()
+                })
+                .unwrap();
+
+                play_hand_to_terminal(&mut session);
+            }
+        }
+    }
+
+    fn play_hand_to_terminal(session: &mut BrowserSession) {
+        for _ in 0..32 {
+            let snapshot = session.snapshot().unwrap();
+            if snapshot.terminal_summary.is_some() {
+                assert!(snapshot.legal_actions.is_empty());
+                return;
+            }
+
+            assert_eq!(snapshot.current_actor, Some(snapshot.human_seat));
+            assert!(
+                !snapshot.legal_actions.is_empty(),
+                "human turn should expose legal actions"
+            );
+
+            let ids = snapshot
+                .legal_actions
+                .iter()
+                .map(|action| action.id.clone())
+                .collect::<Vec<_>>();
+            let unique_ids = ids.iter().cloned().collect::<BTreeSet<_>>();
+            assert_eq!(
+                ids.len(),
+                unique_ids.len(),
+                "browser action ids should stay unique"
+            );
+
+            let action_id = preferred_action_id(&snapshot);
+            assert!(
+                ids.contains(&action_id),
+                "chosen action `{action_id}` should be present in legal actions"
+            );
+            session.apply_human_action(&action_id).unwrap();
+        }
+
+        panic!("expected browser session to complete the hand within the action budget");
+    }
+
+    fn preferred_action_id(snapshot: &super::WebSessionSnapshot) -> String {
+        for preferred in ["check", "call"] {
+            if let Some(action) = snapshot
+                .legal_actions
+                .iter()
+                .find(|action| action.id == preferred)
+            {
+                return action.id.clone();
+            }
+        }
+
+        snapshot
+            .legal_actions
+            .first()
+            .expect("non-terminal snapshot should expose at least one legal action")
+            .id
+            .clone()
     }
 }

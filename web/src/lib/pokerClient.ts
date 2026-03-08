@@ -17,9 +17,7 @@ export class PokerClient {
   private nextId = 1
 
   constructor() {
-    this.worker = new Worker(new URL('../workers/pokerWorker.ts', import.meta.url), {
-      type: 'module',
-    })
+    this.worker = new Worker(createWorkerUrl(), { type: 'module' })
     this.worker.addEventListener('message', this.handleMessage)
     this.worker.addEventListener('error', this.handleWorkerError)
   }
@@ -84,4 +82,24 @@ export class PokerClient {
     }
     this.pending.clear()
   }
+}
+
+function createWorkerUrl(): URL {
+  const workerUrl = new URL('../workers/pokerWorker.ts', import.meta.url)
+  const forcedInitError = readForcedWorkerInitError()
+  if (forcedInitError) {
+    workerUrl.searchParams.set('forceInitError', forcedInitError)
+  }
+  return workerUrl
+}
+
+function readForcedWorkerInitError(): string | null {
+  const host = globalThis as typeof globalThis & {
+    __GTO_FORCE_WORKER_ERROR__?: string
+  }
+  const value = host.__GTO_FORCE_WORKER_ERROR__
+  if (typeof value !== 'string' || value.length === 0) {
+    return null
+  }
+  return value
 }
