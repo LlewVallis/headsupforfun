@@ -8,7 +8,8 @@ use gto_core::{
 };
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
-    BlueprintBot, FullHandBlueprintArtifact,
+    BlueprintBot, FullHandBlueprintArtifact, HybridBot, HybridBotConfig,
+    HybridPostflopProfile,
     FlopStrategyArtifact, FlopTrainingCheckpoint, FlopTrainingProfile, FlopTrainingSession,
     RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile, RiverTrainingSession,
     ScriptedFlopSpot, ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile, StreetProfile, StubBot,
@@ -16,11 +17,19 @@ use gto_solver::{
     abstract_actions, solve_flop_spot, solve_river_spot, solve_turn_spot,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliBotMode {
+    Stub,
+    Blueprint,
+    Hybrid,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliConfig {
     pub seed: u64,
     pub max_hands: Option<usize>,
-    pub use_blueprint_bot: bool,
+    pub bot_mode: CliBotMode,
+    pub hybrid_postflop_profile: HybridPostflopProfile,
     pub blueprint_artifact_path: PathBuf,
 }
 
@@ -29,7 +38,8 @@ impl Default for CliConfig {
         Self {
             seed: DEFAULT_RNG_SEED,
             max_hands: None,
-            use_blueprint_bot: true,
+            bot_mode: CliBotMode::Hybrid,
+            hybrid_postflop_profile: HybridPostflopProfile::Fast,
             blueprint_artifact_path: default_full_hand_artifact_path(),
         }
     }
@@ -89,7 +99,7 @@ pub fn startup_banner() -> String {
     let profile = SolverProfile::placeholder();
 
     format!(
-        "{name} {version}\nstatus: milestones M4-M12 release-candidate CLI\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
+        "{name} {version}\nstatus: milestones M4-M13 hybrid CLI\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
         name = build.crate_name,
         version = build.crate_version,
         profile = profile.name(),
@@ -102,7 +112,7 @@ fn print_cli_help<W: Write>(output: &mut W) -> io::Result<()> {
         output,
         "\
 Usage:
-  cargo run -p gto-cli -- [play] [--seed <u64>] [--hands <count>] [--artifact <path>] [--stub-bot|--blueprint-bot]
+  cargo run -p gto-cli -- [play] [--seed <u64>] [--hands <count>] [--artifact <path>] [--stub-bot|--blueprint-bot|--hybrid-bot] [--postflop-profile <fast|play>]
   cargo run -p gto-cli -- river-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
   cargo run -p gto-cli -- turn-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
   cargo run -p gto-cli -- flop-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
@@ -116,7 +126,9 @@ Session options:
   --hands           Number of hands to play before exiting.
   --artifact        Full-hand blueprint artifact path.
   --stub-bot        Use the deterministic legal-action stub bot instead of the blueprint bot.
-  --blueprint-bot   Use the cached blueprint bot (default).
+  --blueprint-bot   Use the cached blueprint bot only.
+  --hybrid-bot      Use the cached blueprint bot preflop and runtime solving postflop (default).
+  --postflop-profile Hybrid runtime profile: `fast` or `play`.
 "
     )
 }
@@ -129,13 +141,39 @@ pub fn run_session<R: BufRead, W: Write>(
     writeln!(output, "{}", startup_banner())?;
 
     let mut rng = rng_from_seed(config.seed);
-    let bot = StubBot;
-    let blueprint_bot = if config.use_blueprint_bot {
-        let (artifact, source) = load_or_build_full_hand_artifact(&config.blueprint_artifact_path)?;
-        writeln!(output, "strategy: {source}")?;
-        Some(BlueprintBot::new(artifact))
+    let stub_bot = StubBot;
+    let mut blueprint_bot = None;
+    let mut hybrid_bot = None;
+    match config.bot_mode {
+        CliBotMode::Stub => {
+            writeln!(output, "strategy: stub bot")?;
+        }
+        CliBotMode::Blueprint => {
+            let (artifact, source) =
+                load_or_build_full_hand_artifact(&config.blueprint_artifact_path)?;
+            writeln!(output, "strategy: {source}")?;
+            blueprint_bot = Some(BlueprintBot::new(artifact));
+        }
+        CliBotMode::Hybrid => {
+            let (artifact, source) =
+                load_or_build_full_hand_artifact(&config.blueprint_artifact_path)?;
+            writeln!(
+                output,
+                "strategy: {source} + runtime postflop ({})",
+                config.hybrid_postflop_profile.name()
+            )?;
+            hybrid_bot = Some(HybridBot::new(HybridBotConfig::new(
+                artifact,
+                config.hybrid_postflop_profile,
+            )));
+        }
+    }
+    let session_bot = if let Some(bot) = hybrid_bot.as_ref() {
+        SessionBot::Hybrid(bot)
+    } else if let Some(bot) = blueprint_bot.as_ref() {
+        SessionBot::Blueprint(bot)
     } else {
-        None
+        SessionBot::Stub(&stub_bot)
     };
     let mut hand_number = 1usize;
 
@@ -148,8 +186,7 @@ pub fn run_session<R: BufRead, W: Write>(
         let completed = play_single_hand(
             input,
             output,
-            &bot,
-            blueprint_bot.as_ref(),
+            session_bot,
             &mut rng,
             hand_number,
             human_role,
@@ -170,6 +207,39 @@ pub fn run_session<R: BufRead, W: Write>(
     }
 
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum SessionBot<'a> {
+    Stub(&'a StubBot),
+    Blueprint(&'a BlueprintBot),
+    Hybrid(&'a HybridBot),
+}
+
+impl SessionBot<'_> {
+    fn human_actions(self, state: &HoldemHandState) -> io::Result<Option<Vec<AbstractAction>>> {
+        match self {
+            Self::Stub(_) => Ok(None),
+            Self::Blueprint(bot) => {
+                abstract_actions(state, bot.profile()).map(Some).map_err(io::Error::other)
+            }
+            Self::Hybrid(bot) => abstract_actions(state, bot.blueprint_profile())
+                .map(Some)
+                .map_err(io::Error::other),
+        }
+    }
+
+    fn choose_bot_action(
+        self,
+        bot_role: Player,
+        state: &HoldemHandState,
+    ) -> io::Result<PlayerAction> {
+        match self {
+            Self::Stub(bot) => bot.choose_action(state).map_err(io::Error::other),
+            Self::Blueprint(bot) => bot.choose_action(bot_role, state).map_err(io::Error::other),
+            Self::Hybrid(bot) => bot.choose_action(bot_role, state).map_err(io::Error::other),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -889,8 +959,7 @@ fn run_flop_demo<R: BufRead, W: Write>(
 fn play_single_hand<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
-    bot: &StubBot,
-    blueprint_bot: Option<&BlueprintBot>,
+    session_bot: SessionBot<'_>,
     rng: &mut DeterministicRng,
     hand_number: usize,
     human_role: Player,
@@ -908,9 +977,7 @@ fn play_single_hand<R: BufRead, W: Write>(
         match state.phase() {
             HandPhase::BettingRound { actor, .. } => {
                 if actor == human_role {
-                    if let Some(blueprint_bot) = blueprint_bot {
-                        let actions =
-                            abstract_actions(&state, blueprint_bot.profile()).map_err(io::Error::other)?;
+                    if let Some(actions) = session_bot.human_actions(&state)? {
                         if !handle_human_abstract_turn_without_history(
                             input,
                             output,
@@ -925,13 +992,7 @@ fn play_single_hand<R: BufRead, W: Write>(
                         return Ok(false);
                     }
                 } else {
-                    let action = if let Some(blueprint_bot) = blueprint_bot {
-                        blueprint_bot
-                            .choose_action(bot_role, &state)
-                            .map_err(io::Error::other)?
-                    } else {
-                        bot.choose_action(&state).map_err(io::Error::other)?
-                    };
+                    let action = session_bot.choose_bot_action(bot_role, &state)?;
                     writeln!(
                         output,
                         "Bot ({bot_role}) -> {}",
@@ -986,10 +1047,24 @@ fn parse_session_args(args: &[String]) -> Result<CliConfig, &'static str> {
                 config.blueprint_artifact_path = PathBuf::from(path);
             }
             "--stub-bot" => {
-                config.use_blueprint_bot = false;
+                config.bot_mode = CliBotMode::Stub;
             }
             "--blueprint-bot" => {
-                config.use_blueprint_bot = true;
+                config.bot_mode = CliBotMode::Blueprint;
+            }
+            "--hybrid-bot" => {
+                config.bot_mode = CliBotMode::Hybrid;
+            }
+            "--postflop-profile" => {
+                index += 1;
+                let Some(name) = args.get(index) else {
+                    return Err("expected `fast` or `play` after `--postflop-profile`");
+                };
+                config.hybrid_postflop_profile = match name.as_str() {
+                    "fast" => HybridPostflopProfile::Fast,
+                    "play" => HybridPostflopProfile::Play,
+                    _ => return Err("postflop profile must be `fast` or `play`"),
+                };
             }
             _ => return Err("unknown play option"),
         }
@@ -2171,8 +2246,8 @@ fn draw_card(deck: &mut Deck) -> io::Result<gto_core::Card> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions, RiverDemoScenario,
-        TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
+        CliBotMode, CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions,
+        RiverDemoScenario, TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
         default_full_hand_artifact_path, default_river_demo_artifact_path,
         default_turn_demo_artifact_path, display_path, parse_human_abstract_action,
         parse_session_args, parse_user_action, prompt_play_again, run_flop_demo, run_river_demo,
@@ -2181,8 +2256,8 @@ mod tests {
         write_full_hand_artifact, write_river_artifact, write_turn_artifact,
     };
     use gto_solver::{
-        AbstractAction, FlopTrainingProfile, FullHandBlueprintArtifact, RiverTrainingProfile,
-        TurnTrainingProfile,
+        AbstractAction, FlopTrainingProfile, FullHandBlueprintArtifact,
+        HybridPostflopProfile, RiverTrainingProfile, TurnTrainingProfile,
     };
     use gto_core::PlayerAction;
     use std::fs;
@@ -2195,7 +2270,7 @@ mod tests {
         let banner = startup_banner();
 
         assert!(banner.contains("gto-solver"));
-        assert!(banner.contains("milestones M4-M12 release-candidate CLI"));
+        assert!(banner.contains("milestones M4-M13 hybrid CLI"));
     }
 
     #[test]
@@ -2205,7 +2280,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2223,7 +2299,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2238,7 +2315,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2263,8 +2341,28 @@ mod tests {
             CliConfig {
                 seed: 19,
                 max_hands: Some(3),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: "fixtures/strategies/custom.json".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_session_args_supports_hybrid_profile_selection() {
+        let parsed = parse_session_args(&[
+            "--hybrid-bot".into(),
+            "--postflop-profile".into(),
+            "play".into(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            CliConfig {
+                bot_mode: CliBotMode::Hybrid,
+                hybrid_postflop_profile: HybridPostflopProfile::Play,
+                ..CliConfig::default()
             }
         );
     }
@@ -2279,6 +2377,10 @@ mod tests {
 
         let unknown = parse_session_args(&["--mystery".into()]).unwrap_err();
         assert_eq!(unknown, "unknown play option");
+
+        let bad_profile =
+            parse_session_args(&["--postflop-profile".into(), "turbo".into()]).unwrap_err();
+        assert_eq!(bad_profile, "postflop profile must be `fast` or `play`");
     }
 
     #[test]
@@ -2347,7 +2449,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: true,
+                bot_mode: CliBotMode::Blueprint,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2365,7 +2468,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2374,11 +2478,28 @@ mod tests {
     }
 
     #[test]
+    fn hybrid_session_transcript_matches_fixture() {
+        let transcript = capture_session_transcript(
+            b"2\n2\n2\n2\n",
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                bot_mode: CliBotMode::Hybrid,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert_eq!(transcript, load_transcript_fixture("hybrid_fast_seed_7_one_hand.txt"));
+    }
+
+    #[test]
     fn fixed_seed_sessions_are_reproducible() {
         let config = CliConfig {
             seed: 11,
             max_hands: Some(2),
-            use_blueprint_bot: false,
+            bot_mode: CliBotMode::Stub,
+            hybrid_postflop_profile: HybridPostflopProfile::Fast,
             blueprint_artifact_path: default_full_hand_artifact_path(),
         };
 
@@ -2395,7 +2516,8 @@ mod tests {
             CliConfig {
                 seed: 11,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2404,7 +2526,8 @@ mod tests {
             CliConfig {
                 seed: 12,
                 max_hands: Some(1),
-                use_blueprint_bot: false,
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         );
@@ -2423,7 +2546,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: true,
+                bot_mode: CliBotMode::Blueprint,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: artifact_path.clone(),
             },
         )
@@ -2448,7 +2572,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: true,
+                bot_mode: CliBotMode::Blueprint,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: artifact_path.clone(),
             },
         )
@@ -2472,7 +2597,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_blueprint_bot: true,
+                bot_mode: CliBotMode::Blueprint,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
                 blueprint_artifact_path: artifact_path.clone(),
             },
         )

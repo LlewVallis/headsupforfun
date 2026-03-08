@@ -2,7 +2,7 @@ gto-solver 0.1.0
 status: milestones M4-M13 hybrid CLI
 solver-profile: bootstrap-placeholder
 wasm-safe-core: true
-strategy: loaded fixtures/strategies/full_hand_smoke.json
+strategy: loaded fixtures/strategies/full_hand_smoke.json + runtime postflop (fast)
 
 Hand 1
 You are the button.
@@ -25,28 +25,28 @@ You (button): stack=9900 hand=Jh 4c
 Bot (big-blind): stack=9700
 Options: 1: fold | 2: call | 3: raise to 500
 > Turn: 7d 2c 2h 5d
-Bot (big-blind) -> bet to 198
+Bot (big-blind) -> bet to 600
 
 Street: turn
 Board: 7d 2c 2h 5d
-Pot: 798
+Pot: 1200
 You (button): stack=9700 hand=Jh 4c
-Bot (big-blind): stack=9502
-Options: 1: fold | 2: call | 3: raise to 495
+Bot (big-blind): stack=9100
+Options: 1: fold | 2: call | 3: raise to 1500
 > River: 7d 2c 2h 5d Jd
-Bot (big-blind) -> bet to 996
+Bot (big-blind) -> bet to 1800
 
 Street: river
 Board: 7d 2c 2h 5d Jd
-Pot: 1992
-You (button): stack=9502 hand=Jh 4c
-Bot (big-blind): stack=8506
-Options: 1: fold | 2: call | 3: raise to 2490
+Pot: 3600
+You (button): stack=9100 hand=Jh 4c
+Bot (big-blind): stack=7300
+Options: 1: fold | 2: call | 3: raise to 4500
 > 
 Final board: 7d 2c 2h 5d Jd
 Your cards: Jh 4c
 Bot cards: Kd 7h
-Showdown for 2988 chips.
+Showdown for 5400 chips.
 You: two-pair(J,2,7,2,2)
 Bot: two-pair(7,2,K,2,2)
 You wins the pot.

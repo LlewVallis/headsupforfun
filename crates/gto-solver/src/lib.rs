@@ -25,7 +25,10 @@ pub use blueprint::{
     StackPressureBucket, StartingRangeName, StartingRanges, postflop_policy_key,
     preflop_context_from_state, smoke_blueprint_profile,
 };
-pub use bot::{PostflopSolverBot, PostflopSolverBotConfig, PostflopSolverBotError};
+pub use bot::{
+    HybridBot, HybridBotConfig, HybridBotError, HybridPostflopProfile, PostflopSolverBot,
+    PostflopSolverBotConfig, PostflopSolverBotError,
+};
 pub use cfr::{
     CfrCheckpoint, CfrCheckpointError, CfrInfoSetCheckpoint, CfrPlusSolver,
     ExtensiveGameState, GameNode,

@@ -4,9 +4,9 @@ use std::fmt::{self, Display, Formatter};
 use gto_core::{HistoryEvent, HoldemHandState, Player, PlayerAction, Range, Street};
 
 use crate::{
-    AbstractionProfile, HoldemInfoSetKey, OpeningSize, RaiseSize, ScriptedFlopSpot,
-    ScriptedRiverSpot, ScriptedTurnSpot, StubBot, solve_flop_spot, solve_river_spot,
-    solve_turn_spot,
+    AbstractionProfile, BlueprintBot, BlueprintBotError, FullHandBlueprintArtifact,
+    HoldemInfoSetKey, OpeningSize, RaiseSize, ScriptedFlopSpot, ScriptedRiverSpot,
+    ScriptedTurnSpot, StubBot, solve_flop_spot, solve_river_spot, solve_turn_spot,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +51,52 @@ impl PostflopSolverBotConfig {
             river_iterations: 1,
         }
     }
+
+    pub fn from_blueprint_profile(
+        blueprint_profile: AbstractionProfile,
+        postflop_profile: HybridPostflopProfile,
+    ) -> Self {
+        let defaults = Self::smoke_default();
+        let (profile, max_opponent_combos, flop_iterations, turn_iterations, river_iterations) =
+            match postflop_profile {
+                HybridPostflopProfile::Fast => {
+                    (defaults.profile.clone(), 2, 0, 1, 2)
+                }
+                HybridPostflopProfile::Play => {
+                    let preflop = blueprint_profile.for_street(Street::Preflop).clone();
+                    let postflop = crate::StreetProfile {
+                        opening_sizes: vec![
+                            OpeningSize::PotFractionBps(3_300),
+                            OpeningSize::PotFractionBps(10_000),
+                        ],
+                        raise_sizes: vec![],
+                        include_all_in: true,
+                    };
+                    (
+                        AbstractionProfile::new(
+                            preflop,
+                            postflop.clone(),
+                            postflop.clone(),
+                            postflop,
+                        ),
+                        2,
+                        1,
+                        2,
+                        8,
+                    )
+                }
+            };
+
+        Self {
+            profile,
+            button_base_range: defaults.button_base_range,
+            big_blind_base_range: defaults.big_blind_base_range,
+            max_opponent_combos,
+            flop_iterations,
+            turn_iterations,
+            river_iterations,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,10 +115,40 @@ impl PostflopSolverBot {
         Self { config }
     }
 
+    pub const fn config(&self) -> &PostflopSolverBotConfig {
+        &self.config
+    }
+
+    pub const fn uses_runtime_solver_for_street(&self, street: Street) -> bool {
+        match street {
+            Street::Preflop => false,
+            Street::Flop => self.config.flop_iterations > 0,
+            Street::Turn => self.config.turn_iterations > 0,
+            Street::River => self.config.river_iterations > 0,
+        }
+    }
+
     pub fn choose_action(
         &self,
         bot_player: Player,
         state: &HoldemHandState,
+    ) -> Result<PlayerAction, PostflopSolverBotError> {
+        self.choose_action_with_fallback(bot_player, state, SolverFallbackMode::Stub)
+    }
+
+    pub fn try_choose_action(
+        &self,
+        bot_player: Player,
+        state: &HoldemHandState,
+    ) -> Result<PlayerAction, PostflopSolverBotError> {
+        self.choose_action_with_fallback(bot_player, state, SolverFallbackMode::Error)
+    }
+
+    fn choose_action_with_fallback(
+        &self,
+        bot_player: Player,
+        state: &HoldemHandState,
+        fallback_mode: SolverFallbackMode,
     ) -> Result<PlayerAction, PostflopSolverBotError> {
         if state.current_actor() != Some(bot_player) {
             return Err(PostflopSolverBotError::NotActorsTurn {
@@ -82,26 +158,29 @@ impl PostflopSolverBot {
         }
 
         if state.street() == Street::Preflop {
-            return StubBot
-                .choose_action(state)
-                .map_err(PostflopSolverBotError::Fallback);
+            return self.fallback_or_error(
+                PostflopSolverBotError::UnsupportedStreetState(Street::Preflop),
+                state,
+                fallback_mode,
+            );
         }
 
-        if (state.street() == Street::Flop && self.config.flop_iterations == 0)
-            || (state.street() == Street::Turn && self.config.turn_iterations == 0)
-            || (state.street() == Street::River && self.config.river_iterations == 0)
-        {
-            return StubBot
-                .choose_action(state)
-                .map_err(PostflopSolverBotError::Fallback);
+        if !self.uses_runtime_solver_for_street(state.street()) {
+            return self.fallback_or_error(
+                PostflopSolverBotError::RuntimeSolveDisabled(state.street()),
+                state,
+                fallback_mode,
+            );
         }
 
         let bot_hole_cards = state.player(bot_player).hole_cards;
         let opponent_player = bot_player.opponent();
         let Some(opponent_range) = self.opponent_range(opponent_player, state, bot_hole_cards) else {
-            return StubBot
-                .choose_action(state)
-                .map_err(PostflopSolverBotError::Fallback);
+            return self.fallback_or_error(
+                PostflopSolverBotError::OpponentRangeEmpty,
+                state,
+                fallback_mode,
+            );
         };
         let bot_range = Range::from_hole_cards([bot_hole_cards]);
         let (button_range, big_blind_range) = if bot_player == Player::Button {
@@ -155,6 +234,20 @@ impl PostflopSolverBot {
         Ok(action.to_player_action())
     }
 
+    fn fallback_or_error(
+        &self,
+        reason: PostflopSolverBotError,
+        state: &HoldemHandState,
+        fallback_mode: SolverFallbackMode,
+    ) -> Result<PlayerAction, PostflopSolverBotError> {
+        match fallback_mode {
+            SolverFallbackMode::Stub => {
+                StubBot.choose_action(state).map_err(PostflopSolverBotError::Fallback)
+            }
+            SolverFallbackMode::Error => Err(reason),
+        }
+    }
+
     fn opponent_range(
         &self,
         opponent_player: Player,
@@ -175,6 +268,135 @@ impl PostflopSolverBot {
         );
         (!limited.is_empty()).then_some(limited)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HybridPostflopProfile {
+    Fast,
+    Play,
+}
+
+impl Default for HybridPostflopProfile {
+    fn default() -> Self {
+        Self::Fast
+    }
+}
+
+impl HybridPostflopProfile {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Play => "play",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HybridBotConfig {
+    pub blueprint_artifact: FullHandBlueprintArtifact,
+    pub postflop_profile: HybridPostflopProfile,
+}
+
+impl HybridBotConfig {
+    pub const fn new(
+        blueprint_artifact: FullHandBlueprintArtifact,
+        postflop_profile: HybridPostflopProfile,
+    ) -> Self {
+        Self {
+            blueprint_artifact,
+            postflop_profile,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HybridBot {
+    blueprint_bot: BlueprintBot,
+    postflop_solver_bot: PostflopSolverBot,
+    postflop_profile: HybridPostflopProfile,
+}
+
+impl HybridBot {
+    pub fn new(config: HybridBotConfig) -> Self {
+        let blueprint_bot = BlueprintBot::new(config.blueprint_artifact);
+        let postflop_solver_bot = PostflopSolverBot::new(
+            PostflopSolverBotConfig::from_blueprint_profile(
+                blueprint_bot.profile().clone(),
+                config.postflop_profile,
+            ),
+        );
+
+        Self {
+            blueprint_bot,
+            postflop_solver_bot,
+            postflop_profile: config.postflop_profile,
+        }
+    }
+
+    pub fn blueprint_profile(&self) -> &AbstractionProfile {
+        self.blueprint_bot.profile()
+    }
+
+    pub const fn postflop_profile(&self) -> HybridPostflopProfile {
+        self.postflop_profile
+    }
+
+    pub const fn uses_runtime_solver_for_street(&self, street: Street) -> bool {
+        self.postflop_solver_bot.uses_runtime_solver_for_street(street)
+    }
+
+    pub fn choose_action(
+        &self,
+        bot_player: Player,
+        state: &HoldemHandState,
+    ) -> Result<PlayerAction, HybridBotError> {
+        if state.street() == Street::Preflop || !self.uses_runtime_solver_for_street(state.street()) {
+            return self
+                .blueprint_bot
+                .choose_action(bot_player, state)
+                .map_err(HybridBotError::BlueprintOnly);
+        }
+
+        match self.postflop_solver_bot.try_choose_action(bot_player, state) {
+            Ok(action) => Ok(action),
+            Err(postflop_error) => self
+                .blueprint_bot
+                .choose_action(bot_player, state)
+                .map_err(|blueprint_error| HybridBotError::PostflopAndBlueprint {
+                    postflop: postflop_error,
+                    blueprint: blueprint_error,
+                }),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum HybridBotError {
+    BlueprintOnly(BlueprintBotError),
+    PostflopAndBlueprint {
+        postflop: PostflopSolverBotError,
+        blueprint: BlueprintBotError,
+    },
+}
+
+impl Display for HybridBotError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BlueprintOnly(error) => write!(formatter, "{error}"),
+            Self::PostflopAndBlueprint { postflop, blueprint } => write!(
+                formatter,
+                "hybrid bot could not act; runtime postflop solve failed with `{postflop}` and blueprint fallback failed with `{blueprint}`"
+            ),
+        }
+    }
+}
+
+impl Error for HybridBotError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SolverFallbackMode {
+    Stub,
+    Error,
 }
 
 fn scripted_flop_spot_from_state(
@@ -250,6 +472,7 @@ fn actions_for_street(state: &HoldemHandState, street: Street) -> Vec<PlayerActi
 pub enum PostflopSolverBotError {
     OpponentRangeEmpty,
     NoStrategyAction,
+    RuntimeSolveDisabled(Street),
     UnsupportedStreetState(Street),
     NotActorsTurn {
         expected: Option<Player>,
@@ -266,6 +489,9 @@ impl Display for PostflopSolverBotError {
         match self {
             Self::OpponentRangeEmpty => formatter.write_str("postflop solver bot had no opponent range"),
             Self::NoStrategyAction => formatter.write_str("postflop solver bot had no strategy action"),
+            Self::RuntimeSolveDisabled(street) => {
+                write!(formatter, "postflop solver bot runtime solving is disabled on {street}")
+            }
             Self::UnsupportedStreetState(street) => {
                 write!(formatter, "postflop solver bot cannot build a scripted spot for {street}")
             }
@@ -288,7 +514,11 @@ impl Error for PostflopSolverBotError {}
 mod tests {
     use gto_core::{Deck, HandPhase, HoldemConfig, HoldemHandState, HoleCards, Player, PlayerAction, default_rng};
 
-    use super::{PostflopSolverBot, PostflopSolverBotConfig, scripted_flop_spot_from_state, scripted_river_spot_from_state, scripted_turn_spot_from_state};
+    use super::{
+        HybridBot, HybridBotConfig, HybridPostflopProfile, PostflopSolverBot,
+        PostflopSolverBotConfig, scripted_flop_spot_from_state, scripted_river_spot_from_state,
+        scripted_turn_spot_from_state,
+    };
     use crate::{AbstractionProfile, OpeningSize, RaiseSize, StreetProfile};
 
     #[test]
@@ -392,6 +622,129 @@ mod tests {
 
         let action = bot.choose_action(Player::BigBlind, &state).unwrap();
         state.apply_action(action).unwrap();
+    }
+
+    #[test]
+    fn strict_postflop_solver_reports_empty_opponent_range() {
+        let bot = PostflopSolverBot::new(PostflopSolverBotConfig {
+            profile: AbstractionProfile::new(
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+            ),
+            button_base_range: "AsAh".parse().unwrap(),
+            big_blind_base_range: "QcQh".parse().unwrap(),
+            max_opponent_combos: 1,
+            flop_iterations: 1,
+            turn_iterations: 1,
+            river_iterations: 1,
+        });
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["Ah".parse().unwrap(), "Ad".parse().unwrap(), "2c".parse().unwrap()])
+            .unwrap();
+
+        let error = bot.try_choose_action(Player::BigBlind, &state).unwrap_err();
+        assert!(matches!(error, super::PostflopSolverBotError::OpponentRangeEmpty));
+    }
+
+    #[test]
+    fn hybrid_bot_uses_blueprint_preflop_and_runtime_postflop() {
+        let hybrid = HybridBot::new(HybridBotConfig::new(
+            crate::FullHandBlueprintArtifact::smoke_default(),
+            HybridPostflopProfile::Fast,
+        ));
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKs".parse().unwrap(),
+            "QhJh".parse().unwrap(),
+        )
+        .unwrap();
+
+        let preflop_action = hybrid.choose_action(Player::Button, &state).unwrap();
+        let mut replay = state.clone();
+        replay.apply_action(preflop_action).unwrap();
+
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKs".parse().unwrap(),
+            "QhJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "7d".parse().unwrap(), "Th".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_turn("9c".parse().unwrap()).unwrap();
+
+        let turn_action = hybrid.choose_action(Player::BigBlind, &state).unwrap();
+        state.apply_action(turn_action).unwrap();
+    }
+
+    #[test]
+    fn hybrid_bot_falls_back_to_blueprint_when_runtime_solver_cannot_act() {
+        let mut artifact = crate::FullHandBlueprintArtifact::smoke_default();
+        artifact.starting_ranges.button_open_limp = "AsKd".parse().unwrap();
+        artifact.starting_ranges.big_blind_defend_vs_open = "QcJh".parse().unwrap();
+        let hybrid = HybridBot::new(HybridBotConfig::new(
+            artifact,
+            HybridPostflopProfile::Fast,
+        ));
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["Ah".parse().unwrap(), "Ad".parse().unwrap(), "2c".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_turn("3d".parse().unwrap()).unwrap();
+
+        let action = hybrid.choose_action(Player::BigBlind, &state).unwrap();
+        state.apply_action(action).unwrap();
+    }
+
+    #[test]
+    fn hybrid_fast_profile_skips_runtime_flop_solving() {
+        let hybrid = HybridBot::new(HybridBotConfig::new(
+            crate::FullHandBlueprintArtifact::smoke_default(),
+            HybridPostflopProfile::Fast,
+        ));
+        assert!(!hybrid.uses_runtime_solver_for_street(gto_core::Street::Flop));
+        assert!(hybrid.uses_runtime_solver_for_street(gto_core::Street::Turn));
+        assert!(hybrid.uses_runtime_solver_for_street(gto_core::Street::River));
     }
 
     #[test]

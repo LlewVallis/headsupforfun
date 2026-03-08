@@ -1,7 +1,8 @@
 gto-solver 0.1.0
-status: milestones M4-M12 release-candidate CLI
+status: milestones M4-M13 hybrid CLI
 solver-profile: bootstrap-placeholder
 wasm-safe-core: true
+strategy: stub bot
 
 Hand 1
 You are the button.
