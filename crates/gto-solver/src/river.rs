@@ -725,7 +725,7 @@ mod tests {
     fn sample_spot() -> ScriptedRiverSpot {
         ScriptedRiverSpot {
             config: gto_core::HoldemConfig::default(),
-            preflop_actions: vec![PlayerAction::Call],
+            preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
             flop: [
                 "Kc".parse().unwrap(),
                 "8d".parse().unwrap(),

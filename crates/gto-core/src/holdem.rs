@@ -373,6 +373,31 @@ impl HoldemHandState {
         let max_total = effective_max_total(state, opponent);
 
         if to_call == 0 {
+            if self.big_blind_option_pending() {
+                let mut raise_range = None;
+                let mut all_in_to = None;
+                if self.raise_reopened[actor.index()] && max_total > self.current_bet {
+                    let minimum_raise_to = self.current_bet + self.last_full_raise_size;
+                    if max_total >= minimum_raise_to {
+                        raise_range = Some(WagerRange {
+                            min_total: minimum_raise_to,
+                            max_total,
+                        });
+                    } else {
+                        all_in_to = Some(max_total);
+                    }
+                }
+
+                return Ok(LegalActions {
+                    fold: false,
+                    check: true,
+                    call_amount: None,
+                    bet_range: None,
+                    raise_range,
+                    all_in_to,
+                });
+            }
+
             let bet_range = if self.current_bet == 0 && max_total >= self.config.big_blind {
                 Some(WagerRange {
                     min_total: self.config.big_blind,
@@ -446,6 +471,7 @@ impl HoldemHandState {
                 self.finish_uncontested(actor.opponent());
             }
             PlayerAction::Check => {
+                let closes_big_blind_option = self.big_blind_option_pending();
                 if !legal_actions.check {
                     return Err(HoldemStateError::IllegalAction {
                         player: actor,
@@ -455,7 +481,7 @@ impl HoldemHandState {
                 self.raise_reopened[actor.index()] = false;
                 self.checks_in_round += 1;
                 self.record_action(current_street, actor, action);
-                if self.checks_in_round >= 2 {
+                if closes_big_blind_option || self.checks_in_round >= 2 {
                     self.finish_betting_round()?;
                 } else {
                     self.phase = HandPhase::BettingRound {
@@ -465,6 +491,7 @@ impl HoldemHandState {
                 }
             }
             PlayerAction::Call => {
+                let opens_big_blind_option = self.opens_big_blind_option(actor);
                 let Some(call_amount) = legal_actions.call_amount else {
                     return Err(HoldemStateError::IllegalAction {
                         player: actor,
@@ -474,7 +501,14 @@ impl HoldemHandState {
                 self.contribute(actor, call_amount);
                 self.raise_reopened[actor.index()] = false;
                 self.record_action(current_street, actor, action);
-                self.finish_betting_round()?;
+                if opens_big_blind_option {
+                    self.phase = HandPhase::BettingRound {
+                        street: self.street,
+                        actor: actor.opponent(),
+                    };
+                } else {
+                    self.finish_betting_round()?;
+                }
             }
             PlayerAction::BetTo(total) => {
                 let Some(range) = legal_actions.bet_range else {
@@ -710,6 +744,39 @@ impl HoldemHandState {
         Ok(())
     }
 
+    fn big_blind_option_pending(&self) -> bool {
+        self.street == Street::Preflop
+            && self.current_actor() == Some(Player::BigBlind)
+            && self.current_bet == self.config.big_blind
+            && self.player_state(Player::Button).street_contribution == self.config.big_blind
+            && self.player_state(Player::BigBlind).street_contribution == self.config.big_blind
+            && self.preflop_action_count() == 1
+    }
+
+    fn opens_big_blind_option(&self, actor: Player) -> bool {
+        actor == Player::Button
+            && self.street == Street::Preflop
+            && self.current_bet == self.config.big_blind
+            && self.player_state(Player::Button).street_contribution == self.config.small_blind
+            && self.player_state(Player::BigBlind).street_contribution == self.config.big_blind
+            && self.preflop_action_count() == 0
+    }
+
+    fn preflop_action_count(&self) -> usize {
+        self.history
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    HistoryEvent::ActionApplied {
+                        street: Street::Preflop,
+                        ..
+                    }
+                )
+            })
+            .count()
+    }
+
     fn player_state(&self, player: Player) -> &InternalPlayerState {
         &self.players[player.index()]
     }
@@ -909,26 +976,42 @@ mod tests {
     }
 
     #[test]
-    fn calling_preflop_advances_to_the_flop() {
+    fn calling_preflop_gives_the_big_blind_their_option() {
         let mut state = sample_state_with_default_config();
 
         state.apply_action(PlayerAction::Call).unwrap();
 
         assert_eq!(
             state.phase(),
-            HandPhase::AwaitingBoard {
-                next_street: Street::Flop,
+            HandPhase::BettingRound {
+                street: Street::Preflop,
+                actor: Player::BigBlind,
             }
         );
         assert_eq!(state.pot(), 200);
         assert_eq!(state.player(Player::Button).stack, 9_900);
         assert_eq!(state.player(Player::BigBlind).stack, 9_900);
+        assert_eq!(
+            state.legal_actions().unwrap(),
+            LegalActions {
+                fold: false,
+                check: true,
+                call_amount: None,
+                bet_range: None,
+                raise_range: Some(WagerRange {
+                    min_total: 200,
+                    max_total: 10_000,
+                }),
+                all_in_to: None,
+            }
+        );
     }
 
     #[test]
     fn dealing_flop_begins_a_new_betting_round_with_big_blind_first() {
         let mut state = sample_state_with_default_config();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
 
         state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
 
@@ -960,6 +1043,7 @@ mod tests {
     fn check_check_advances_the_street() {
         let mut state = sample_state_with_default_config();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
 
         state.apply_action(PlayerAction::Check).unwrap();
@@ -1019,6 +1103,7 @@ mod tests {
                 .unwrap();
 
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
         state.apply_action(PlayerAction::BetTo(100)).unwrap();
 
@@ -1069,6 +1154,7 @@ mod tests {
                 .unwrap();
 
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
         state.apply_action(PlayerAction::BetTo(100)).unwrap();
         state.apply_action(PlayerAction::AllIn).unwrap();
@@ -1106,6 +1192,7 @@ mod tests {
     fn duplicate_board_cards_are_rejected() {
         let mut state = sample_state_with_default_config();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
 
         let error = state
             .deal_flop(parse_cards::<3>("As3d4h"))
@@ -1118,6 +1205,7 @@ mod tests {
     fn action_history_records_board_and_terminal_events() {
         let mut state = sample_state_with_default_config();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
         state.apply_action(PlayerAction::Check).unwrap();
         state.apply_action(PlayerAction::Check).unwrap();

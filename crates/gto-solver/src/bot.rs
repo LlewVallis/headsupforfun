@@ -297,13 +297,14 @@ mod tests {
         )
         .unwrap();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state
             .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
             .unwrap();
         state.apply_action(PlayerAction::BetTo(100)).unwrap();
 
         let flop_spot = scripted_flop_spot_from_state(&state).unwrap();
-        assert_eq!(flop_spot.preflop_actions, vec![PlayerAction::Call]);
+        assert_eq!(flop_spot.preflop_actions, vec![PlayerAction::Call, PlayerAction::Check]);
         assert_eq!(flop_spot.flop_prefix_actions, vec![PlayerAction::BetTo(100)]);
 
         state.apply_action(PlayerAction::Call).unwrap();
@@ -332,6 +333,7 @@ mod tests {
         )
         .unwrap();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state
             .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
             .unwrap();

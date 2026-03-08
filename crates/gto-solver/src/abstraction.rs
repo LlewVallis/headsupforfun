@@ -262,11 +262,10 @@ fn opening_total(state: &HoldemHandState, size: OpeningSize) -> Option<Chips> {
 fn raise_total(state: &HoldemHandState, size: RaiseSize) -> Option<Chips> {
     let actor = state.current_actor()?;
     let actor_snapshot = state.player(actor);
-    let to_call = state
-        .legal_actions()
-        .ok()?
-        .call_amount?;
-    let current_bet = actor_snapshot.street_contribution + to_call;
+    let opponent_snapshot = state.player(actor.opponent());
+    let to_call = state.legal_actions().ok()?.call_amount.unwrap_or(0);
+    let current_bet = (actor_snapshot.street_contribution + to_call)
+        .max(opponent_snapshot.street_contribution);
 
     match size {
         RaiseSize::CurrentBetMultipleBps(bps) => Some(scale_bps(current_bet, bps)),

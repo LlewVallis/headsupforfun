@@ -2,6 +2,7 @@
 #![doc = "Portable solver interfaces and strategy infrastructure."]
 
 mod abstraction;
+mod blueprint;
 mod bot;
 mod cfr;
 mod flop;
@@ -16,6 +17,13 @@ use gto_core::{CoreBuildInfo, HoldemHandState, HoldemStateError, PlayerAction, b
 pub use abstraction::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, PublicStateKey,
     RaiseSize, StreetProfile, abstract_actions,
+};
+pub use blueprint::{
+    BlueprintActionKind, BlueprintActionProbability, BlueprintArtifactError, BlueprintBot,
+    BlueprintBotError, DrawBucket, FullHandBlueprintArtifact, MadeHandBucket, PostflopPolicyEntry,
+    PostflopPolicyKey, PreflopContextKey, PreflopPolicyEntry, PreflopRangeRule,
+    StackPressureBucket, StartingRangeName, StartingRanges, postflop_policy_key,
+    preflop_context_from_state, smoke_blueprint_profile,
 };
 pub use bot::{PostflopSolverBot, PostflopSolverBotConfig, PostflopSolverBotError};
 pub use cfr::{
@@ -167,6 +175,7 @@ mod tests {
         )
         .unwrap();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
             .unwrap();
 
@@ -182,6 +191,7 @@ mod tests {
         )
         .unwrap();
         state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
         state.deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
             .unwrap();
         state.apply_action(PlayerAction::BetTo(100)).unwrap();
