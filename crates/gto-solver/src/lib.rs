@@ -5,6 +5,8 @@ mod abstraction;
 mod blueprint;
 mod bot;
 mod cfr;
+#[cfg(feature = "serde")]
+mod eval;
 mod flop;
 mod kuhn;
 mod river;
@@ -32,6 +34,14 @@ pub use bot::{
 pub use cfr::{
     CfrCheckpoint, CfrCheckpointError, CfrInfoSetCheckpoint, CfrPlusSolver,
     ExtensiveGameState, GameNode,
+};
+#[cfg(feature = "serde")]
+pub use eval::{
+    PostflopScriptedSpot, TexasSolverActionNode, TexasSolverEvalError, TexasSolverEvalSpot,
+    TexasSolverExport, TexasSolverEvNode, TexasSolverGradeReport, TexasSolverGradeStatus,
+    TexasSolverReferenceSuite, TexasSolverSpotGrade, TexasSolverSpotReference,
+    TexasSolverSpotSuite, TexasSolverStrategyNode, grade_texassolver_suite,
+    texassolver_smoke_suite,
 };
 pub use flop::{
     FlopActionProbability, FlopArtifactError, FlopCheckpointError, FlopSolveError,

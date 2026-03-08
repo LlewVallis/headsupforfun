@@ -1,0 +1,548 @@
+{
+  "format_version": 1,
+  "suite_name": "smoke",
+  "spots": [
+    {
+      "id": "river_oop_root",
+      "description": "river root with oop to act",
+      "button_hole_cards": {
+        "cards": [
+          {
+            "rank": "Ace",
+            "suit": "Spades"
+          },
+          {
+            "rank": "Queen",
+            "suit": "Hearts"
+          }
+        ]
+      },
+      "big_blind_hole_cards": {
+        "cards": [
+          {
+            "rank": "Jack",
+            "suit": "Diamonds"
+          },
+          {
+            "rank": "Ten",
+            "suit": "Clubs"
+          }
+        ]
+      },
+      "button_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Ace",
+                "suit": "Spades"
+              },
+              {
+                "rank": "Queen",
+                "suit": "Hearts"
+              }
+            ]
+          }
+        ]
+      },
+      "big_blind_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Jack",
+                "suit": "Diamonds"
+              },
+              {
+                "rank": "Ten",
+                "suit": "Clubs"
+              }
+            ]
+          }
+        ]
+      },
+      "profile": {
+        "preflop": {
+          "opening_sizes": [
+            {
+              "BigBlindMultipleBps": 25000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "CurrentBetMultipleBps": 25000
+            }
+          ],
+          "include_all_in": true
+        },
+        "flop": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "turn": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "river": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        }
+      },
+      "iterations": 8,
+      "script": {
+        "street": "river",
+        "spot": {
+          "config": {
+            "starting_stack": 10000,
+            "small_blind": 50,
+            "big_blind": 100
+          },
+          "button_starting_stack": null,
+          "big_blind_starting_stack": null,
+          "preflop_actions": [
+            {
+              "RaiseTo": 250
+            },
+            "Call"
+          ],
+          "flop": [
+            {
+              "rank": "Queen",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Clubs"
+            }
+          ],
+          "flop_actions": [
+            "Check",
+            "Check"
+          ],
+          "turn": {
+            "rank": "Two",
+            "suit": "Hearts"
+          },
+          "turn_actions": [
+            "Check",
+            "Check"
+          ],
+          "river": {
+            "rank": "Seven",
+            "suit": "Spades"
+          },
+          "river_prefix_actions": []
+        }
+      }
+    },
+    {
+      "id": "river_oop_root_alt",
+      "description": "second river root spot",
+      "button_hole_cards": {
+        "cards": [
+          {
+            "rank": "Ace",
+            "suit": "Clubs"
+          },
+          {
+            "rank": "King",
+            "suit": "Diamonds"
+          }
+        ]
+      },
+      "big_blind_hole_cards": {
+        "cards": [
+          {
+            "rank": "Queen",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "Jack",
+            "suit": "Hearts"
+          }
+        ]
+      },
+      "button_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Ace",
+                "suit": "Clubs"
+              },
+              {
+                "rank": "King",
+                "suit": "Diamonds"
+              }
+            ]
+          }
+        ]
+      },
+      "big_blind_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Queen",
+                "suit": "Hearts"
+              },
+              {
+                "rank": "Jack",
+                "suit": "Hearts"
+              }
+            ]
+          }
+        ]
+      },
+      "profile": {
+        "preflop": {
+          "opening_sizes": [
+            {
+              "BigBlindMultipleBps": 25000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "CurrentBetMultipleBps": 25000
+            }
+          ],
+          "include_all_in": true
+        },
+        "flop": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "turn": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "river": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        }
+      },
+      "iterations": 8,
+      "script": {
+        "street": "river",
+        "spot": {
+          "config": {
+            "starting_stack": 10000,
+            "small_blind": 50,
+            "big_blind": 100
+          },
+          "button_starting_stack": null,
+          "big_blind_starting_stack": null,
+          "preflop_actions": [
+            "Call",
+            "Check"
+          ],
+          "flop": [
+            {
+              "rank": "King",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Nine",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Three",
+              "suit": "Clubs"
+            }
+          ],
+          "flop_actions": [
+            "Check",
+            "Check"
+          ],
+          "turn": {
+            "rank": "Two",
+            "suit": "Spades"
+          },
+          "turn_actions": [
+            "Check",
+            "Check"
+          ],
+          "river": {
+            "rank": "Seven",
+            "suit": "Diamonds"
+          },
+          "river_prefix_actions": []
+        }
+      }
+    },
+    {
+      "id": "river_oop_root_third",
+      "description": "third river root spot",
+      "button_hole_cards": {
+        "cards": [
+          {
+            "rank": "Ace",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "Jack",
+            "suit": "Diamonds"
+          }
+        ]
+      },
+      "big_blind_hole_cards": {
+        "cards": [
+          {
+            "rank": "Ten",
+            "suit": "Diamonds"
+          },
+          {
+            "rank": "Nine",
+            "suit": "Clubs"
+          }
+        ]
+      },
+      "button_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Ace",
+                "suit": "Hearts"
+              },
+              {
+                "rank": "Jack",
+                "suit": "Diamonds"
+              }
+            ]
+          }
+        ]
+      },
+      "big_blind_range": {
+        "combos": [
+          {
+            "cards": [
+              {
+                "rank": "Ten",
+                "suit": "Diamonds"
+              },
+              {
+                "rank": "Nine",
+                "suit": "Clubs"
+              }
+            ]
+          }
+        ]
+      },
+      "profile": {
+        "preflop": {
+          "opening_sizes": [
+            {
+              "BigBlindMultipleBps": 25000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "CurrentBetMultipleBps": 25000
+            }
+          ],
+          "include_all_in": true
+        },
+        "flop": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "turn": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        },
+        "river": {
+          "opening_sizes": [
+            {
+              "PotFractionBps": 3300
+            },
+            {
+              "PotFractionBps": 6600
+            },
+            {
+              "PotFractionBps": 10000
+            }
+          ],
+          "raise_sizes": [
+            {
+              "PotFractionAfterCallBps": 10000
+            }
+          ],
+          "include_all_in": true
+        }
+      },
+      "iterations": 8,
+      "script": {
+        "street": "river",
+        "spot": {
+          "config": {
+            "starting_stack": 10000,
+            "small_blind": 50,
+            "big_blind": 100
+          },
+          "button_starting_stack": null,
+          "big_blind_starting_stack": null,
+          "preflop_actions": [
+            "Call",
+            "Check"
+          ],
+          "flop": [
+            {
+              "rank": "Jack",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Five",
+              "suit": "Diamonds"
+            }
+          ],
+          "flop_actions": [
+            "Check",
+            "Check"
+          ],
+          "turn": {
+            "rank": "Two",
+            "suit": "Clubs"
+          },
+          "turn_actions": [
+            "Check",
+            "Check"
+          ],
+          "river": {
+            "rank": "Seven",
+            "suit": "Hearts"
+          },
+          "river_prefix_actions": []
+        }
+      }
+    }
+  ]
+}
