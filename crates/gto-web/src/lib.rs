@@ -154,12 +154,9 @@ impl BrowserSession {
     }
 
     pub fn snapshot(&self) -> Result<WebSessionSnapshot, WebSessionError> {
-        let showdown_visible = matches!(
-            self.state.current_outcome(),
-            Some(HandOutcome::Showdown { .. })
-        );
-        let button = self.player_snapshot(Player::Button, showdown_visible);
-        let big_blind = self.player_snapshot(Player::BigBlind, showdown_visible);
+        let terminal_visible = self.state.current_outcome().is_some();
+        let button = self.player_snapshot(Player::Button, terminal_visible);
+        let big_blind = self.player_snapshot(Player::BigBlind, terminal_visible);
         let terminal_summary = self.state.current_outcome().map(format_outcome_summary);
 
         Ok(WebSessionSnapshot {
@@ -270,9 +267,9 @@ impl BrowserSession {
             .collect())
     }
 
-    fn player_snapshot(&self, player: Player, showdown_visible: bool) -> WebPlayerSnapshot {
+    fn player_snapshot(&self, player: Player, terminal_visible: bool) -> WebPlayerSnapshot {
         let snapshot = self.state.player(player);
-        let cards_visible = player == self.human_role || showdown_visible;
+        let cards_visible = player == self.human_role || terminal_visible;
 
         WebPlayerSnapshot {
             seat: WebSeat::from(player),
@@ -582,6 +579,35 @@ mod tests {
             snapshot.current_actor == Some(WebSeat::Button) || snapshot.terminal_summary.is_some()
         );
         assert_eq!(snapshot.big_blind.hole_cards.len(), 0);
+    }
+
+    #[test]
+    fn terminal_snapshots_reveal_both_players_hole_cards_even_without_showdown() {
+        let mut session = BrowserSession::new(WebSessionConfig {
+            seed: 5,
+            bot_mode: WebBotMode::Blueprint,
+            ..WebSessionConfig::default()
+        })
+        .unwrap();
+
+        for _ in 0..32 {
+            let snapshot = session.snapshot().unwrap();
+            if snapshot.terminal_summary.is_some() {
+                assert_eq!(snapshot.button.hole_cards.len(), 2);
+                assert_eq!(snapshot.big_blind.hole_cards.len(), 2);
+                return;
+            }
+
+            let action_id = snapshot
+                .legal_actions
+                .iter()
+                .find(|action| action.id == "fold")
+                .map(|action| action.id.clone())
+                .unwrap_or_else(|| preferred_action_id(&snapshot));
+            session.apply_human_action(&action_id).unwrap();
+        }
+
+        panic!("expected test hand to reach a terminal state within the action budget");
     }
 
     #[test]

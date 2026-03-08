@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import type { WebSessionSnapshot } from './lib/pokerTypes'
@@ -43,6 +43,10 @@ const terminalSnapshot: WebSessionSnapshot = {
   currentActor: null,
   legalActions: [],
   terminalSummary: 'button wins at showdown for 6.5 bb',
+  bigBlind: {
+    ...baseSnapshot.bigBlind,
+    holeCards: ['Qc', 'Qd'],
+  },
   history: [
     ...baseSnapshot.history,
     'preflop: button calls',
@@ -150,6 +154,9 @@ describe('App', () => {
 
     const user = userEvent.setup()
     expect(await screen.findByRole('button', { name: 'Deal next hand' })).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Bot panel')).getAllByRole('img', { name: /of/i }),
+    ).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: 'Deal next hand' }))
 

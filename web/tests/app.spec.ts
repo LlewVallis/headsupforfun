@@ -26,6 +26,7 @@ test('plays a complete browser hand and deals the next one', async ({ page }) =>
   }
 
   await expect(page.getByRole('button', { name: 'Deal next hand' })).toBeVisible()
+  await expect(page.getByLabel('Bot panel').getByRole('img', { name: /of/i })).toHaveCount(2)
 
   await page.getByRole('button', { name: 'Deal next hand' }).click()
 

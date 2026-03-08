@@ -262,7 +262,7 @@ function App() {
               <div className="pointer-events-none absolute inset-[7%] rounded-[999px] border-[12px] border-[#6e4d28] bg-[radial-gradient(circle_at_50%_35%,rgba(36,122,82,0.96),rgba(10,63,42,0.98)_60%,rgba(8,40,28,0.98)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_40px_80px_rgba(255,255,255,0.06),inset_0_-60px_90px_rgba(0,0,0,0.34)]" />
               <div className="pointer-events-none absolute inset-[8.6%] rounded-[999px] border border-white/7" />
 
-              <div className="relative z-10 grid min-h-[620px] grid-rows-[auto_1fr_auto_auto] gap-3 md:min-h-[680px]">
+              <div className="relative z-10 grid min-h-[620px] grid-rows-[auto_1fr_auto_auto] gap-3 pt-5 md:min-h-[680px] md:pt-6">
                 <PlayerSeat
                   label={botLabel()}
                   badge={seatBadge(villain.seat)}
@@ -417,7 +417,10 @@ function PlayerSeat(props: {
 
   return (
     <section
-      className="mx-auto flex w-full max-w-[390px] flex-col items-center gap-2.5 text-center"
+      className={joinClasses(
+        'mx-auto flex w-full max-w-[390px] flex-col items-center gap-2.5 text-center',
+        props.align === 'top' ? 'pt-1' : '',
+      )}
       aria-label={props.label === heroLabel() ? 'Hero panel' : 'Bot panel'}
     >
       <div className="relative">
@@ -474,7 +477,7 @@ function ActionBubble(props: SeatBubble) {
   return (
     <div
       className={joinClasses(
-        'action-bubble absolute left-1/2 top-0 z-10 inline-flex min-h-10 -translate-x-1/2 -translate-y-[58%] items-center gap-2 rounded-full border px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] shadow-[0_12px_30px_rgba(0,0,0,0.28)]',
+        'action-bubble absolute left-1/2 top-0 z-10 inline-flex min-h-10 -translate-x-1/2 -translate-y-[52%] items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] shadow-[0_12px_30px_rgba(0,0,0,0.28)] md:text-[0.72rem]',
         props.tone === 'thinking'
           ? 'border-gold-300/24 bg-black/62 text-gold-300'
           : 'border-gold-300/26 bg-black/55 text-gold-300',
