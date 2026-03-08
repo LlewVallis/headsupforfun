@@ -1,0 +1,51 @@
+gto-solver 0.1.0
+status: milestones M4-M12 release-candidate CLI
+solver-profile: bootstrap-placeholder
+wasm-safe-core: true
+
+Hand 1
+You are the button.
+Your cards: Jh 4c
+
+Street: preflop
+Board: -
+Pot: 150
+You (button): stack=9950 hand=Jh 4c
+Bot (big-blind): stack=9900
+Options: fold | call (50) | raise <200-10000>
+> Bot (big-blind) -> check
+Flop: 7d 2c 2h
+Bot (big-blind) -> check
+
+Street: flop
+Board: 7d 2c 2h
+Pot: 200
+You (button): stack=9900 hand=Jh 4c
+Bot (big-blind): stack=9900
+Options: check | bet <100-9900>
+> Turn: 7d 2c 2h 5d
+Bot (big-blind) -> check
+
+Street: turn
+Board: 7d 2c 2h 5d
+Pot: 200
+You (button): stack=9900 hand=Jh 4c
+Bot (big-blind): stack=9900
+Options: check | bet <100-9900>
+> River: 7d 2c 2h 5d Jd
+Bot (big-blind) -> check
+
+Street: river
+Board: 7d 2c 2h 5d Jd
+Pot: 200
+You (button): stack=9900 hand=Jh 4c
+Bot (big-blind): stack=9900
+Options: check | bet <100-9900>
+> 
+Final board: 7d 2c 2h 5d Jd
+Your cards: Jh 4c
+Bot cards: Kd 7h
+Showdown for 200 chips.
+You: two-pair(J,2,7,2,2)
+Bot: two-pair(7,2,K,2,2)
+You wins the pot.

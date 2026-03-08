@@ -41,6 +41,14 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
     let mut input = stdin.lock();
     let mut output = stdout.lock();
     match args.first().map(String::as_str) {
+        Some("help") | Some("--help") | Some("-h") => print_cli_help(&mut output),
+        Some("play") if matches!(args.get(1).map(String::as_str), Some("--help" | "-h")) => {
+            print_cli_help(&mut output)
+        }
+        Some("play") => {
+            let config = parse_session_args(&args[1..]).map_err(io::Error::other)?;
+            run_session(&mut input, &mut output, config)
+        }
         Some("river-demo") => {
             let options = parse_river_demo_args(&args[1..]).map_err(io::Error::other)?;
             run_river_demo(&mut input, &mut output, &options)
@@ -69,7 +77,10 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
             let options = parse_full_hand_artifact_args(&args[1..]).map_err(io::Error::other)?;
             run_build_full_hand_artifact(&mut output, &options)
         }
-        _ => run_session(&mut input, &mut output, CliConfig::default()),
+        _ => {
+            let config = parse_session_args(args).map_err(io::Error::other)?;
+            run_session(&mut input, &mut output, config)
+        }
     }
 }
 
@@ -78,11 +89,35 @@ pub fn startup_banner() -> String {
     let profile = SolverProfile::placeholder();
 
     format!(
-        "{name} {version}\nstatus: milestones M4-M10 full-hand blueprint CLI\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
+        "{name} {version}\nstatus: milestones M4-M12 release-candidate CLI\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
         name = build.crate_name,
         version = build.crate_version,
         profile = profile.name(),
         wasm_safe = build.wasm_safe && build.core.wasm_safe,
+    )
+}
+
+fn print_cli_help<W: Write>(output: &mut W) -> io::Result<()> {
+    writeln!(
+        output,
+        "\
+Usage:
+  cargo run -p gto-cli -- [play] [--seed <u64>] [--hands <count>] [--artifact <path>] [--stub-bot|--blueprint-bot]
+  cargo run -p gto-cli -- river-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
+  cargo run -p gto-cli -- turn-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
+  cargo run -p gto-cli -- flop-demo [--artifact <path>] [--write-artifact <path>] [--solve|--artifact-only] [--no-play]
+  cargo run -p gto-cli -- train-river-demo [--artifact <path>] [--checkpoint <path>] [--profile <smoke|dev|full>]
+  cargo run -p gto-cli -- train-turn-demo [--artifact <path>] [--checkpoint <path>] [--profile <smoke|dev|full>]
+  cargo run -p gto-cli -- train-flop-demo [--artifact <path>] [--checkpoint <path>] [--profile <smoke|dev|full>]
+  cargo run -p gto-cli -- build-blueprint-artifact [--artifact <path>]
+
+Session options:
+  --seed            Deterministic RNG seed for replayable dealing.
+  --hands           Number of hands to play before exiting.
+  --artifact        Full-hand blueprint artifact path.
+  --stub-bot        Use the deterministic legal-action stub bot instead of the blueprint bot.
+  --blueprint-bot   Use the cached blueprint bot (default).
+"
     )
 }
 
@@ -558,7 +593,7 @@ fn run_river_demo<R: BufRead, W: Write>(
 
     if let Some(path) = &options.write_artifact_path {
         write_river_artifact(path, &artifact)?;
-        writeln!(output, "Wrote river artifact to {}", path.display())?;
+        writeln!(output, "Wrote river artifact to {}", display_path(path))?;
     }
 
     if options.no_play {
@@ -652,7 +687,7 @@ fn run_turn_demo<R: BufRead, W: Write>(
 
     if let Some(path) = &options.write_artifact_path {
         write_turn_artifact(path, &artifact)?;
-        writeln!(output, "Wrote turn artifact to {}", path.display())?;
+        writeln!(output, "Wrote turn artifact to {}", display_path(path))?;
     }
 
     if options.no_play {
@@ -754,7 +789,7 @@ fn run_flop_demo<R: BufRead, W: Write>(
 
     if let Some(path) = &options.write_artifact_path {
         write_flop_artifact(path, &artifact)?;
-        writeln!(output, "Wrote flop artifact to {}", path.display())?;
+        writeln!(output, "Wrote flop artifact to {}", display_path(path))?;
     }
 
     if options.no_play {
@@ -914,6 +949,54 @@ fn play_single_hand<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+fn parse_session_args(args: &[String]) -> Result<CliConfig, &'static str> {
+    let mut config = CliConfig::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--seed" => {
+                index += 1;
+                let Some(seed) = args.get(index) else {
+                    return Err("expected an unsigned integer after `--seed`");
+                };
+                config.seed = seed
+                    .parse::<u64>()
+                    .map_err(|_| "seed must be an unsigned integer")?;
+            }
+            "--hands" | "--max-hands" => {
+                index += 1;
+                let Some(count) = args.get(index) else {
+                    return Err("expected a positive integer after `--hands`");
+                };
+                let count = count
+                    .parse::<usize>()
+                    .map_err(|_| "hand count must be a positive integer")?;
+                if count == 0 {
+                    return Err("hand count must be greater than zero");
+                }
+                config.max_hands = Some(count);
+            }
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                config.blueprint_artifact_path = PathBuf::from(path);
+            }
+            "--stub-bot" => {
+                config.use_blueprint_bot = false;
+            }
+            "--blueprint-bot" => {
+                config.use_blueprint_bot = true;
+            }
+            _ => return Err("unknown play option"),
+        }
+        index += 1;
+    }
+
+    Ok(config)
 }
 
 fn parse_river_demo_args(args: &[String]) -> Result<RiverDemoOptions, &'static str> {
@@ -1175,7 +1258,7 @@ fn run_train_river_demo<W: Write>(
             writeln!(
                 output,
                 "Resuming river demo training from {}",
-                options.checkpoint_path.display()
+                display_path(&options.checkpoint_path)
             )?;
             RiverTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
         }
@@ -1204,7 +1287,7 @@ fn run_train_river_demo<W: Write>(
             "checkpoint: {} / {} iterations -> {}",
             session.iterations(),
             target_iterations,
-            options.checkpoint_path.display()
+            display_path(&options.checkpoint_path)
         )?;
     }
 
@@ -1214,7 +1297,7 @@ fn run_train_river_demo<W: Write>(
         output,
         "artifact: {} iterations -> {}",
         artifact.iterations,
-        options.artifact_path.display()
+        display_path(&options.artifact_path)
     )?;
 
     Ok(())
@@ -1232,7 +1315,7 @@ fn run_train_turn_demo<W: Write>(
             writeln!(
                 output,
                 "Resuming turn demo training from {}",
-                options.checkpoint_path.display()
+                display_path(&options.checkpoint_path)
             )?;
             TurnTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
         }
@@ -1261,7 +1344,7 @@ fn run_train_turn_demo<W: Write>(
             "checkpoint: {} / {} iterations -> {}",
             session.iterations(),
             target_iterations,
-            options.checkpoint_path.display()
+            display_path(&options.checkpoint_path)
         )?;
     }
 
@@ -1271,7 +1354,7 @@ fn run_train_turn_demo<W: Write>(
         output,
         "artifact: {} iterations -> {}",
         artifact.iterations,
-        options.artifact_path.display()
+        display_path(&options.artifact_path)
     )?;
 
     Ok(())
@@ -1289,7 +1372,7 @@ fn run_train_flop_demo<W: Write>(
             writeln!(
                 output,
                 "Resuming flop demo training from {}",
-                options.checkpoint_path.display()
+                display_path(&options.checkpoint_path)
             )?;
             FlopTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
         }
@@ -1318,7 +1401,7 @@ fn run_train_flop_demo<W: Write>(
             "checkpoint: {} / {} iterations -> {}",
             session.iterations(),
             target_iterations,
-            options.checkpoint_path.display()
+            display_path(&options.checkpoint_path)
         )?;
     }
 
@@ -1328,7 +1411,7 @@ fn run_train_flop_demo<W: Write>(
         output,
         "artifact: {} iterations -> {}",
         artifact.iterations,
-        options.artifact_path.display()
+        display_path(&options.artifact_path)
     )?;
 
     Ok(())
@@ -1346,7 +1429,7 @@ fn run_build_full_hand_artifact<W: Write>(
         "artifact: preflop={} postflop={} -> {}",
         artifact.preflop_policies.len(),
         artifact.postflop_policies.len(),
-        options.artifact_path.display()
+        display_path(&options.artifact_path)
     )?;
     Ok(())
 }
@@ -1358,13 +1441,13 @@ fn load_or_build_river_demo_artifact(
     match read_river_artifact(&options.artifact_path) {
         Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
-            format!("loaded {}", options.artifact_path.display()),
+            format!("loaded {}", display_path(&options.artifact_path)),
         )),
         Ok(_) if options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact incompatible at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Ok(_) => Err(io::Error::other(
@@ -1374,7 +1457,7 @@ fn load_or_build_river_demo_artifact(
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact missing at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Err(error) => Err(error),
@@ -1388,13 +1471,13 @@ fn load_or_build_turn_demo_artifact(
     match read_turn_artifact(&options.artifact_path) {
         Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
-            format!("loaded {}", options.artifact_path.display()),
+            format!("loaded {}", display_path(&options.artifact_path)),
         )),
         Ok(_) if options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact incompatible at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Ok(_) => Err(io::Error::other(
@@ -1404,7 +1487,7 @@ fn load_or_build_turn_demo_artifact(
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact missing at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Err(error) => Err(error),
@@ -1418,13 +1501,13 @@ fn load_or_build_flop_demo_artifact(
     match read_flop_artifact(&options.artifact_path) {
         Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
-            format!("loaded {}", options.artifact_path.display()),
+            format!("loaded {}", display_path(&options.artifact_path)),
         )),
         Ok(_) if options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact incompatible at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Ok(_) => Err(io::Error::other(
@@ -1434,7 +1517,7 @@ fn load_or_build_flop_demo_artifact(
             scenario.build_artifact(scenario.artifact_iterations)?,
             format!(
                 "generated inline (default artifact missing at {})",
-                options.artifact_path.display()
+                display_path(&options.artifact_path)
             ),
         )),
         Err(error) => Err(error),
@@ -1484,12 +1567,19 @@ fn load_or_build_full_hand_artifact(
     path: &Path,
 ) -> io::Result<(FullHandBlueprintArtifact, String)> {
     match read_full_hand_artifact(path) {
-        Ok(artifact) => Ok((artifact, format!("loaded {}", path.display()))),
+        Ok(artifact) => Ok((artifact, format!("loaded {}", display_path(path)))),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok((
             FullHandBlueprintArtifact::smoke_default(),
-            format!("generated inline (default artifact missing at {})", path.display()),
+            format!(
+                "generated inline (default artifact missing at {})",
+                display_path(path)
+            ),
         )),
-        Err(error) => Err(error),
+        Err(error) => Err(io::Error::other(format!(
+            "failed to load blueprint artifact at {}: {error}. Rebuild it with `cargo run -p gto-cli -- build-blueprint-artifact --artifact {}` or use `--stub-bot`.",
+            display_path(path),
+            display_path(path)
+        ))),
     }
 }
 
@@ -1591,6 +1681,24 @@ fn workspace_root() -> PathBuf {
         .and_then(Path::parent)
         .map(Path::to_path_buf)
         .expect("gto-cli manifest dir should live under the workspace root")
+}
+
+fn display_path(path: &Path) -> String {
+    let workspace = workspace_root();
+    if let Ok(relative) = path.strip_prefix(&workspace) {
+        normalize_path(relative)
+    } else {
+        normalize_path(path)
+    }
+}
+
+fn normalize_path(path: &Path) -> String {
+    let rendered = path.to_string_lossy().replace('\\', "/");
+    if rendered.is_empty() {
+        ".".to_string()
+    } else {
+        rendered
+    }
 }
 
 fn handle_human_turn<R: BufRead, W: Write>(
@@ -2060,10 +2168,10 @@ mod tests {
         CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions, RiverDemoScenario,
         TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
         default_full_hand_artifact_path, default_river_demo_artifact_path,
-        default_turn_demo_artifact_path, run_flop_demo, run_river_demo, run_session,
-        run_train_flop_demo, run_train_river_demo, run_train_turn_demo, run_turn_demo,
-        startup_banner, write_flop_artifact, write_full_hand_artifact, write_river_artifact,
-        write_turn_artifact,
+        default_turn_demo_artifact_path, parse_session_args, run_flop_demo, run_river_demo,
+        run_session, run_train_flop_demo, run_train_river_demo, run_train_turn_demo,
+        run_turn_demo, startup_banner, workspace_root, write_flop_artifact,
+        write_full_hand_artifact, write_river_artifact, write_turn_artifact,
     };
     use gto_solver::{
         FlopTrainingProfile, FullHandBlueprintArtifact, RiverTrainingProfile, TurnTrainingProfile,
@@ -2078,27 +2186,20 @@ mod tests {
         let banner = startup_banner();
 
         assert!(banner.contains("gto-solver"));
-        assert!(banner.contains("milestones M4-M10 full-hand blueprint CLI"));
+        assert!(banner.contains("milestones M4-M12 release-candidate CLI"));
     }
 
     #[test]
     fn scripted_session_can_play_a_complete_hand() {
-        let input = b"call\ncheck\ncheck\ncheck\n";
-        let mut output = Vec::new();
-
-        run_session(
-            &mut Cursor::new(&input[..]),
-            &mut output,
+        let transcript = capture_session_transcript(
+            b"call\ncheck\ncheck\ncheck\n",
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
                 use_blueprint_bot: false,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
-        )
-        .unwrap();
-
-        let transcript = String::from_utf8(output).unwrap();
+        );
         assert!(transcript.contains("Hand 1"));
         assert!(transcript.contains("You are the button."));
         assert!(transcript.contains("Your cards:"));
@@ -2108,44 +2209,127 @@ mod tests {
 
     #[test]
     fn invalid_input_is_reported_and_reprompted() {
-        let input = b"banana\ncall\ncheck\ncheck\ncheck\n";
-        let mut output = Vec::new();
-
-        run_session(
-            &mut Cursor::new(&input[..]),
-            &mut output,
+        let transcript = capture_session_transcript(
+            b"banana\ncall\ncheck\ncheck\ncheck\n",
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
                 use_blueprint_bot: false,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
-        )
-        .unwrap();
-
-        let transcript = String::from_utf8(output).unwrap();
+        );
         assert!(transcript.contains("Invalid action"));
         assert!(transcript.contains("Showdown") || transcript.contains("wins"));
     }
 
     #[test]
     fn eof_exits_cleanly() {
-        let mut output = Vec::new();
-
-        run_session(
-            &mut Cursor::new(&b""[..]),
-            &mut output,
+        let transcript = capture_session_transcript(
+            b"",
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
                 use_blueprint_bot: false,
                 blueprint_artifact_path: default_full_hand_artifact_path(),
             },
-        )
-        .unwrap();
-
-        let transcript = String::from_utf8(output).unwrap();
+        );
         assert!(transcript.contains("Input closed; exiting."));
+    }
+
+    #[test]
+    fn parse_session_args_supports_replay_controls() {
+        let args = vec![
+            "--seed".to_string(),
+            "19".to_string(),
+            "--hands".to_string(),
+            "3".to_string(),
+            "--artifact".to_string(),
+            "fixtures/strategies/custom.json".to_string(),
+            "--stub-bot".to_string(),
+        ];
+
+        let parsed = parse_session_args(&args).unwrap();
+        assert_eq!(
+            parsed,
+            CliConfig {
+                seed: 19,
+                max_hands: Some(3),
+                use_blueprint_bot: false,
+                blueprint_artifact_path: "fixtures/strategies/custom.json".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn blueprint_session_transcript_matches_fixture() {
+        let transcript = capture_session_transcript(
+            b"2\n2\n2\n2\n",
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                use_blueprint_bot: true,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert_eq!(
+            transcript,
+            load_transcript_fixture("blueprint_seed_7_one_hand.txt")
+        );
+    }
+
+    #[test]
+    fn stub_session_transcript_matches_fixture() {
+        let transcript = capture_session_transcript(
+            b"call\ncheck\ncheck\ncheck\n",
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert_eq!(transcript, load_transcript_fixture("stub_seed_7_one_hand.txt"));
+    }
+
+    #[test]
+    fn fixed_seed_sessions_are_reproducible() {
+        let config = CliConfig {
+            seed: 11,
+            max_hands: Some(2),
+            use_blueprint_bot: false,
+            blueprint_artifact_path: default_full_hand_artifact_path(),
+        };
+
+        let left = capture_session_transcript(b"call\ncheck\ncheck\ncheck\ncall\nfold\n", config.clone());
+        let right = capture_session_transcript(b"call\ncheck\ncheck\ncheck\ncall\nfold\n", config);
+
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn different_seeds_change_the_transcript() {
+        let left = capture_session_transcript(
+            b"call\ncheck\ncheck\ncheck\n",
+            CliConfig {
+                seed: 11,
+                max_hands: Some(1),
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+        let right = capture_session_transcript(
+            b"call\ncheck\ncheck\ncheck\n",
+            CliConfig {
+                seed: 12,
+                max_hands: Some(1),
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert_ne!(left, right);
     }
 
     #[test]
@@ -2193,6 +2377,31 @@ mod tests {
         let transcript = String::from_utf8(output).unwrap();
         assert!(transcript.contains("strategy: loaded"));
         assert!(transcript.contains("Options: 1: fold"));
+
+        let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn invalid_blueprint_artifact_reports_a_friendly_error() {
+        let artifact_path = unique_test_path("invalid-full-hand-smoke.json");
+        fs::write(&artifact_path, "{ definitely not valid json").unwrap();
+
+        let error = run_session(
+            &mut Cursor::new(&b""[..]),
+            &mut Vec::new(),
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                use_blueprint_bot: true,
+                blueprint_artifact_path: artifact_path.clone(),
+            },
+        )
+        .expect_err("invalid artifact should fail");
+
+        let message = error.to_string();
+        assert!(message.contains("failed to load blueprint artifact"));
+        assert!(message.contains("build-blueprint-artifact"));
+        assert!(message.contains("--stub-bot"));
 
         let _ = fs::remove_file(artifact_path);
     }
@@ -2437,5 +2646,22 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("gto-{nanos}-{name}"))
+    }
+
+    fn capture_session_transcript(input: &[u8], config: CliConfig) -> String {
+        let mut output = Vec::new();
+        run_session(&mut Cursor::new(input), &mut output, config).unwrap();
+        String::from_utf8(output).unwrap()
+    }
+
+    fn load_transcript_fixture(name: &str) -> String {
+        fs::read_to_string(
+            workspace_root()
+                .join("fixtures")
+                .join("transcripts")
+                .join(name),
+        )
+        .unwrap()
+        .replace("\r\n", "\n")
     }
 }
