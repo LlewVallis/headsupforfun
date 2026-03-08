@@ -213,7 +213,7 @@ impl FullHandBlueprintArtifact {
     #[cfg(feature = "serde")]
     pub fn to_json_string(&self) -> Result<String, BlueprintArtifactError> {
         self.validate_version()?;
-        serde_json::to_string_pretty(self)
+        serde_json::to_string(self)
             .map_err(|error| BlueprintArtifactError::Encode(error.to_string()))
     }
 
