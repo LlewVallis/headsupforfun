@@ -60,9 +60,18 @@ test('keeps the player-facing app on the fixed hybrid-play experience', async ({
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible()
 })
 
-test('shows bot thinking feedback and then fades the action bubble', async ({ page }) => {
+test('shows the flop while the bot thinks and then fades the action bubble', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New match' })).toBeEnabled()
+  await page.evaluate(() => {
+    ;(window as typeof window & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 0
+  })
+  await page.getByRole('button', { name: 'New match' }).click()
+  await page.getByLabel('Action tray').getByRole('button', { name: 'Call', exact: true }).click()
+  await expect(
+    page.getByLabel('Board cards').getByRole('img', { name: /of/i }),
+  ).toHaveCount(3, { timeout: 5_000 })
 
   await page.evaluate(() => {
     ;(window as typeof window & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
@@ -71,12 +80,14 @@ test('shows bot thinking feedback and then fades the action bubble', async ({ pa
 
   const firstAction = page
     .getByLabel('Action tray')
-    .getByRole('button', { name: /Call|Check/ })
-    .first()
+    .getByRole('button', { name: /Raise to 5.0/i })
   await firstAction.click()
 
   await expect(page.locator('.action-bubble')).toContainText('Thinking')
   await expect(page.locator('.action-bubble')).toHaveCount(1)
+  await expect(
+    page.getByLabel('Board cards').getByRole('img', { name: /of/i }),
+  ).toHaveCount(3)
 
   await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
   await expect(page.locator('.action-bubble')).toHaveCount(1)

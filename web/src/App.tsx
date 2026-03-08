@@ -133,6 +133,7 @@ function App() {
       }
 
       setBotPresence({ state: 'thinking' })
+      await waitForNextPaint()
       const afterBotSnapshot = await client.advanceBot()
       setSnapshot(afterBotSnapshot)
 
@@ -565,6 +566,19 @@ function fillBoardCards(cards: string[]): Array<string | null> {
 
 function toErrorMessage(value: unknown): string {
   return value instanceof Error ? value.message : 'Unknown frontend error'
+}
+
+async function waitForNextPaint(): Promise<void> {
+  if (typeof window.requestAnimationFrame === 'function') {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve())
+    })
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0)
+  })
 }
 
 function joinClasses(...classes: Array<string | false | null | undefined>): string {

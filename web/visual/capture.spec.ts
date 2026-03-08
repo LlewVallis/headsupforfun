@@ -16,17 +16,27 @@ test('capture stable desktop screenshots for visual review', async ({ page }) =>
   await clearExistingScreenshots()
 
   await page.goto('/')
+  await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New match' })).toBeEnabled()
+  await page.evaluate(() => {
+    ;(window as typeof window & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 0
+  })
+  await page.getByRole('button', { name: 'New match' }).click()
   await expect(
     page.getByRole('heading', { name: "Heads-Up Hold'em" }),
   ).toBeVisible()
   await expect(page.getByLabel('Poker table')).toBeVisible()
   await capture(page, '01-opening-hand.png')
 
+  await page.getByLabel('Action tray').getByRole('button', { name: 'Call', exact: true }).click()
+  await expect(
+    page.getByLabel('Board cards').getByRole('img', { name: /of/i }),
+  ).toHaveCount(3, { timeout: 5_000 })
   await page.evaluate(() => {
     ;(window as typeof window & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
       280
   })
-  await clickPreferredAction(page)
+  await page.getByLabel('Action tray').getByRole('button', { name: /Raise to 5.0/i }).click()
   await expect(page.locator('.action-bubble')).toContainText('Thinking')
   await capture(page, '02-bot-thinking.png')
 

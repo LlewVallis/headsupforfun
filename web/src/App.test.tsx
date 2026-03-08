@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { BOT_ACTION_BUBBLE_MS } from './lib/presentation'
@@ -216,6 +216,7 @@ describe('App', () => {
       expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
       expect(screen.getByText('Watch the bot respond')).toBeInTheDocument()
       expect(within(screen.getByLabelText('Board cards')).getAllByRole('img', { name: /of/i })).toHaveLength(3)
+      await waitFor(() => expect(advanceBotMock).toHaveBeenCalledTimes(1))
 
       await act(async () => {
         resolveBotAction?.(postActionSnapshot)
