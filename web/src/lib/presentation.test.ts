@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { WebSessionSnapshot } from './pokerTypes'
 import {
   BOT_ACTION_BUBBLE_MS,
+  BOT_MIN_THINK_MS,
+  BOARD_REVEAL_STEP_MS,
   actionPrompt,
   buildPlayerSessionConfig,
   defaultTestSeed,
@@ -118,5 +120,7 @@ describe('presentation helpers', () => {
     )
     expect(actionPrompt(snapshot, true)).toBe('Solver Bot is thinking...')
     expect(BOT_ACTION_BUBBLE_MS).toBeGreaterThan(0)
+    expect(BOT_MIN_THINK_MS).toBeGreaterThan(0)
+    expect(BOARD_REVEAL_STEP_MS).toBeGreaterThan(0)
   })
 })

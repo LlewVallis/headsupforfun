@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { BOT_ACTION_BUBBLE_MS } from './lib/presentation'
+import { BOARD_REVEAL_STEP_MS, BOT_ACTION_BUBBLE_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
 const baseSnapshot: WebSessionSnapshot = {
@@ -182,7 +182,7 @@ describe('App', () => {
   })
 
   it(
-    'shows the revealed board while the bot is thinking',
+    'reveals the flop one card at a time while the bot is thinking',
     async () => {
       const user = userEvent.setup()
 
@@ -213,9 +213,23 @@ describe('App', () => {
         await Promise.resolve()
       })
 
+      const countVisibleBoardCards = () =>
+        within(screen.getByLabelText('Board cards')).queryAllByRole('img', { name: /of/i }).length
+
       expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
       expect(screen.getByText('Watch the bot respond')).toBeInTheDocument()
-      expect(within(screen.getByLabelText('Board cards')).getAllByRole('img', { name: /of/i })).toHaveLength(3)
+      await waitFor(
+        () => expect(countVisibleBoardCards()).toBe(1),
+        { timeout: BOARD_REVEAL_STEP_MS + 500 },
+      )
+      await waitFor(
+        () => expect(countVisibleBoardCards()).toBe(2),
+        { timeout: (BOARD_REVEAL_STEP_MS * 2) + 500 },
+      )
+      await waitFor(
+        () => expect(countVisibleBoardCards()).toBe(3),
+        { timeout: (BOARD_REVEAL_STEP_MS * 3) + 500 },
+      )
       await waitFor(() => expect(advanceBotMock).toHaveBeenCalledTimes(1))
 
       await act(async () => {
@@ -236,7 +250,7 @@ describe('App', () => {
 
     await user.click(callButton)
 
-    expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
+    expect(await screen.findByText('Bets to 4.0 BB', {}, { timeout: 3_500 })).toBeInTheDocument()
 
     await act(async () => {
       await new Promise((resolve) => window.setTimeout(resolve, BOT_ACTION_BUBBLE_MS + 100))

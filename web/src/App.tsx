@@ -5,6 +5,8 @@ import { PokerChipMark } from './components/PokerChipMark'
 import { PokerClient } from './lib/pokerClient'
 import {
   BOT_ACTION_BUBBLE_MS,
+  BOT_MIN_THINK_MS,
+  BOARD_REVEAL_STEP_MS,
   actionPrompt,
   botLabel,
   buildPlayerSessionConfig,
@@ -76,6 +78,7 @@ function App() {
 
   const boardCards = fillBoardCards(snapshot?.boardCards ?? [])
   const heroTurn = snapshot?.currentActor === snapshot?.humanSeat && !snapshot?.terminalSummary
+  const heroReady = heroTurn && botPresence.state === 'idle'
   const controlsLocked = busy || loading
   const botBubble: SeatBubble | null =
     botPresence.state === 'thinking'
@@ -120,22 +123,32 @@ function App() {
 
     try {
       const afterHumanSnapshot = await client.applyHumanAction(actionId)
-      setSnapshot(afterHumanSnapshot)
+      const botActsAfterHuman =
+        !afterHumanSnapshot.terminalSummary &&
+        afterHumanSnapshot.currentActor === afterHumanSnapshot.botSeat
+
+      let thinkStartedAt = 0
+      if (botActsAfterHuman) {
+        setBotPresence({ state: 'thinking' })
+        thinkStartedAt = performance.now()
+      }
+
+      await transitionSnapshot(snapshot, afterHumanSnapshot)
 
       if (afterHumanSnapshot.terminalSummary) {
         setBotPresence({ state: 'idle' })
         return
       }
 
-      if (afterHumanSnapshot.currentActor !== afterHumanSnapshot.botSeat) {
+      if (!botActsAfterHuman) {
         setBotPresence({ state: 'idle' })
         return
       }
 
-      setBotPresence({ state: 'thinking' })
       await waitForNextPaint()
       const afterBotSnapshot = await client.advanceBot()
-      setSnapshot(afterBotSnapshot)
+      await transitionSnapshot(afterHumanSnapshot, afterBotSnapshot)
+      await waitForMinimumThink(thinkStartedAt)
 
       const botAction = extractBotActionLabel(afterHumanSnapshot, afterBotSnapshot)
       if (botAction) {
@@ -186,6 +199,46 @@ function App() {
       )
       botBubbleTimerRef.current = null
     }, BOT_ACTION_BUBBLE_MS)
+  }
+
+  async function transitionSnapshot(
+    previousSnapshot: WebSessionSnapshot,
+    nextSnapshot: WebSessionSnapshot,
+  ): Promise<void> {
+    if (nextSnapshot.boardCards.length <= previousSnapshot.boardCards.length) {
+      setSnapshot(nextSnapshot)
+      await waitForNextPaint()
+      return
+    }
+
+    const previousBoardCount = previousSnapshot.boardCards.length
+    setSnapshot({
+      ...nextSnapshot,
+      boardCards: nextSnapshot.boardCards.slice(0, previousBoardCount),
+    })
+    await waitForNextPaint()
+
+    for (
+      let visibleCount = previousBoardCount + 1;
+      visibleCount <= nextSnapshot.boardCards.length;
+      visibleCount += 1
+    ) {
+      await sleep(BOARD_REVEAL_STEP_MS)
+      setSnapshot({
+        ...nextSnapshot,
+        boardCards: nextSnapshot.boardCards.slice(0, visibleCount),
+      })
+      await waitForNextPaint()
+    }
+  }
+
+  async function waitForMinimumThink(startedAt: number): Promise<void> {
+    const elapsed = performance.now() - startedAt
+    if (elapsed >= BOT_MIN_THINK_MS) {
+      return
+    }
+
+    await sleep(BOT_MIN_THINK_MS - elapsed)
   }
 
   async function initializeSession(
@@ -346,17 +399,17 @@ function App() {
                   </div>
                   <div className="mt-4 max-w-md">
                     <p className="text-[0.72rem] uppercase tracking-[0.26em] text-gold-300/80">
-                      {outcome ? 'Showdown' : heroTurn ? 'Your move' : actionPrompt(snapshot, busy)}
+                      {outcome ? 'Showdown' : heroReady ? 'Your move' : actionPrompt(snapshot, busy)}
                     </p>
                     <h2 className="mt-1.5 text-[1.7rem] font-semibold tracking-[-0.04em] text-white md:text-[2.05rem]">
-                      {outcome ? outcome.headline : heroTurn ? 'Pick your action' : 'Watch the bot respond'}
+                      {outcome ? outcome.headline : heroReady ? 'Pick your action' : 'Watch the bot respond'}
                     </h2>
                     <p className="mt-1 text-sm leading-5 text-white/68">
                       {outcome
                         ? outcome.detail
                         : botPresence.state === 'action'
                           ? `${botLabel()} ${botPresence.label.toLowerCase()}.`
-                          : heroTurn
+                          : heroReady
                             ? 'Choose from the available abstract actions below the table.'
                             : 'The next action will appear beside the bot seat.'}
                     </p>
@@ -369,7 +422,7 @@ function App() {
                   stack={hero.stack}
                   cards={hero.holeCards}
                   hiddenCards={false}
-                  active={heroTurn && !controlsLocked}
+                  active={heroReady && !controlsLocked}
                   tone="hero"
                   align="bottom"
                 />
@@ -578,6 +631,12 @@ async function waitForNextPaint(): Promise<void> {
 
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 0)
+  })
+}
+
+async function sleep(durationMs: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, durationMs)
   })
 }
 
