@@ -15,7 +15,10 @@ pub use abstraction::{
 };
 pub use cfr::{CfrPlusSolver, ExtensiveGameState, GameNode};
 pub use kuhn::{KuhnAction, KuhnCard, KuhnInfoSet, KuhnState};
-pub use river::{RiverSolveError, RiverSolverResult, ScriptedRiverSpot, solve_river_spot};
+pub use river::{
+    RiverActionProbability, RiverArtifactError, RiverSolveError, RiverSolverResult,
+    RiverStrategyArtifact, RiverStrategyEntry, ScriptedRiverSpot, solve_river_spot,
+};
 pub use tree::{PublicTree, PublicTreeEdge, PublicTreeNode, PublicTreeNodeKind, build_public_tree};
 
 /// Static build metadata for the solver crate.

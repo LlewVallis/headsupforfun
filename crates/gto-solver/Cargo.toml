@@ -10,11 +10,12 @@ rust-version.workspace = true
 path = "src/lib.rs"
 
 [features]
-default = ["std"]
+default = ["std", "serde"]
 parallel = []
-serde = ["dep:serde", "gto-core/serde"]
+serde = ["dep:serde", "dep:serde_json", "gto-core/serde"]
 std = ["gto-core/std"]
 
 [dependencies]
 gto-core = { path = "../gto-core", default-features = false }
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

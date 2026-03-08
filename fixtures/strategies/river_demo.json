@@ -1,0 +1,1274 @@
+{
+  "format_version": 1,
+  "spot": {
+    "config": {
+      "starting_stack": 10000,
+      "small_blind": 50,
+      "big_blind": 100
+    },
+    "preflop_actions": [
+      "Call"
+    ],
+    "flop": [
+      {
+        "rank": "King",
+        "suit": "Clubs"
+      },
+      {
+        "rank": "Eight",
+        "suit": "Diamonds"
+      },
+      {
+        "rank": "Four",
+        "suit": "Spades"
+      }
+    ],
+    "flop_actions": [
+      "Check",
+      "Check"
+    ],
+    "turn": {
+      "rank": "Three",
+      "suit": "Hearts"
+    },
+    "turn_actions": [
+      "Check",
+      "Check"
+    ],
+    "river": {
+      "rank": "Two",
+      "suit": "Diamonds"
+    },
+    "river_prefix_actions": [
+      {
+        "BetTo": 100
+      }
+    ]
+  },
+  "button_range": {
+    "combos": [
+      {
+        "cards": [
+          {
+            "rank": "Two",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "Two",
+            "suit": "Clubs"
+          }
+        ]
+      },
+      {
+        "cards": [
+          {
+            "rank": "Eight",
+            "suit": "Clubs"
+          },
+          {
+            "rank": "Seven",
+            "suit": "Clubs"
+          }
+        ]
+      },
+      {
+        "cards": [
+          {
+            "rank": "Queen",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "Jack",
+            "suit": "Clubs"
+          }
+        ]
+      }
+    ]
+  },
+  "big_blind_range": {
+    "combos": [
+      {
+        "cards": [
+          {
+            "rank": "Eight",
+            "suit": "Spades"
+          },
+          {
+            "rank": "Eight",
+            "suit": "Hearts"
+          }
+        ]
+      },
+      {
+        "cards": [
+          {
+            "rank": "King",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "King",
+            "suit": "Diamonds"
+          }
+        ]
+      },
+      {
+        "cards": [
+          {
+            "rank": "Ace",
+            "suit": "Hearts"
+          },
+          {
+            "rank": "Queen",
+            "suit": "Hearts"
+          }
+        ]
+      }
+    ]
+  },
+  "profile": {
+    "preflop": {
+      "opening_sizes": [
+        {
+          "BigBlindMultipleBps": 25000
+        }
+      ],
+      "raise_sizes": [
+        {
+          "CurrentBetMultipleBps": 25000
+        }
+      ],
+      "include_all_in": false
+    },
+    "flop": {
+      "opening_sizes": [
+        {
+          "PotFractionBps": 10000
+        }
+      ],
+      "raise_sizes": [
+        {
+          "CurrentBetMultipleBps": 30000
+        }
+      ],
+      "include_all_in": false
+    },
+    "turn": {
+      "opening_sizes": [
+        {
+          "PotFractionBps": 10000
+        }
+      ],
+      "raise_sizes": [
+        {
+          "CurrentBetMultipleBps": 30000
+        }
+      ],
+      "include_all_in": false
+    },
+    "river": {
+      "opening_sizes": [
+        {
+          "PotFractionBps": 10000
+        }
+      ],
+      "raise_sizes": [
+        {
+          "CurrentBetMultipleBps": 30000
+        }
+      ],
+      "include_all_in": false
+    }
+  },
+  "iterations": 8000,
+  "entries": [
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Eight",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 3800,
+          "button_stack": 7200,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 9.079720031777226e-6
+        },
+        {
+          "action": "Fold",
+          "probability": 4.629758234025019e-6
+        },
+        {
+          "action": {
+            "RaiseTo": 8100
+          },
+          "probability": 0.9999862905217343
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Eight",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 600,
+          "button_stack": 9600,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.000013888888888888888
+        },
+        {
+          "action": "Fold",
+          "probability": 0.000013888888888888888
+        },
+        {
+          "action": {
+            "RaiseTo": 900
+          },
+          "probability": 0.9999722222222222
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 3800,
+          "button_stack": 7200,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": "Fold",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": {
+            "RaiseTo": 8100
+          },
+          "probability": 0.3333333333333333
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 600,
+          "button_stack": 9600,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.33333333333333337
+        },
+        {
+          "action": "Fold",
+          "probability": 0.33333333333333337
+        },
+        {
+          "action": {
+            "RaiseTo": 900
+          },
+          "probability": 0.33333333333333337
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "King",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "King",
+              "suit": "Diamonds"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 3800,
+          "button_stack": 7200,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": "Fold",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": {
+            "RaiseTo": 8100
+          },
+          "probability": 0.3333333333333333
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "King",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "King",
+              "suit": "Diamonds"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 600,
+          "button_stack": 9600,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.33333333333333337
+        },
+        {
+          "action": "Fold",
+          "probability": 0.33333333333333337
+        },
+        {
+          "action": {
+            "RaiseTo": 900
+          },
+          "probability": 0.33333333333333337
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Two",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 11000,
+          "button_stack": 7200,
+          "big_blind_stack": 1800,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 8200,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 8100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          },
+          {
+            "RaiseTo": 8100
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.575152704168018
+        },
+        {
+          "action": "Fold",
+          "probability": 0.42484729583198194
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Two",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 1400,
+          "button_stack": 9600,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.37658921078900043
+        },
+        {
+          "action": "Fold",
+          "probability": 0.46143280686046484
+        },
+        {
+          "action": {
+            "RaiseTo": 2700
+          },
+          "probability": 0.16197798235053476
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Two",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 300,
+          "button_stack": 9900,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 100,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": []
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.9926240568621282
+        },
+        {
+          "action": "Fold",
+          "probability": 0.0073292230067163
+        },
+        {
+          "action": {
+            "RaiseTo": 300
+          },
+          "probability": 0.000046720131155486475
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Eight",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Seven",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 11000,
+          "button_stack": 7200,
+          "big_blind_stack": 1800,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 8200,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 8100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          },
+          {
+            "RaiseTo": 8100
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.4635511737119695
+        },
+        {
+          "action": "Fold",
+          "probability": 0.5364488262880306
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Eight",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Seven",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 1400,
+          "button_stack": 9600,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.34113536619714036
+        },
+        {
+          "action": "Fold",
+          "probability": 0.5062471417580069
+        },
+        {
+          "action": {
+            "RaiseTo": 2700
+          },
+          "probability": 0.15261749204485278
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Eight",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Seven",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 300,
+          "button_stack": 9900,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 100,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": []
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.9926605739825153
+        },
+        {
+          "action": "Fold",
+          "probability": 0.007304886926916067
+        },
+        {
+          "action": {
+            "RaiseTo": 300
+          },
+          "probability": 0.000034539090568677445
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Jack",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 11000,
+          "button_stack": 7200,
+          "big_blind_stack": 1800,
+          "button_total_contribution": 2800,
+          "big_blind_total_contribution": 8200,
+          "button_street_contribution": 2700,
+          "big_blind_street_contribution": 8100
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          },
+          {
+            "RaiseTo": 2700
+          },
+          {
+            "RaiseTo": 8100
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.5
+        },
+        {
+          "action": "Fold",
+          "probability": 0.5
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Jack",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 1400,
+          "button_stack": 9600,
+          "big_blind_stack": 9000,
+          "button_total_contribution": 400,
+          "big_blind_total_contribution": 1000,
+          "button_street_contribution": 300,
+          "big_blind_street_contribution": 900
+        },
+        "public_history": [
+          {
+            "RaiseTo": 300
+          },
+          {
+            "RaiseTo": 900
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": "Fold",
+          "probability": 0.3333333333333333
+        },
+        {
+          "action": {
+            "RaiseTo": 2700
+          },
+          "probability": 0.3333333333333333
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "Button",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Jack",
+              "suit": "Clubs"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Two",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "Button",
+          "pot": 300,
+          "button_stack": 9900,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 100,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 100
+        },
+        "public_history": []
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.00019495816701493035
+        },
+        {
+          "action": "Fold",
+          "probability": 0.9997842084996518
+        },
+        {
+          "action": {
+            "RaiseTo": 300
+          },
+          "probability": 0.000020833333333333333
+        }
+      ]
+    }
+  ]
+}

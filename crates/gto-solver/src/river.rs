@@ -13,6 +13,7 @@ use crate::{
     HoldemInfoSetKey, abstract_actions,
 };
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptedRiverSpot {
     pub config: HoldemConfig,
@@ -75,6 +76,16 @@ pub struct RiverSolverResult {
 }
 
 impl RiverSolverResult {
+    fn from_strategy_snapshot(
+        iterations: u64,
+        strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
+    ) -> Self {
+        Self {
+            iterations,
+            strategy,
+        }
+    }
+
     pub const fn iterations(&self) -> u64 {
         self.iterations
     }
@@ -95,6 +106,106 @@ impl RiverSolverResult {
                 .map(|(action, _)| action)
         })
     }
+
+    pub fn into_artifact(
+        self,
+        spot: ScriptedRiverSpot,
+        button_range: Range,
+        big_blind_range: Range,
+        profile: AbstractionProfile,
+    ) -> RiverStrategyArtifact {
+        RiverStrategyArtifact::from_solver_result(
+            spot,
+            button_range,
+            big_blind_range,
+            profile,
+            self,
+        )
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RiverStrategyArtifact {
+    pub format_version: u32,
+    pub spot: ScriptedRiverSpot,
+    pub button_range: Range,
+    pub big_blind_range: Range,
+    pub profile: AbstractionProfile,
+    pub iterations: u64,
+    pub entries: Vec<RiverStrategyEntry>,
+}
+
+impl RiverStrategyArtifact {
+    pub const FORMAT_VERSION: u32 = 1;
+
+    pub fn from_solver_result(
+        spot: ScriptedRiverSpot,
+        button_range: Range,
+        big_blind_range: Range,
+        profile: AbstractionProfile,
+        result: RiverSolverResult,
+    ) -> Self {
+        let mut entries = snapshot_to_entries(result.strategy);
+        sort_strategy_entries(&mut entries);
+
+        Self {
+            format_version: Self::FORMAT_VERSION,
+            spot,
+            button_range,
+            big_blind_range,
+            profile,
+            iterations: result.iterations,
+            entries,
+        }
+    }
+
+    pub fn to_solver_result(&self) -> Result<RiverSolverResult, RiverArtifactError> {
+        self.validate_version()?;
+        Ok(RiverSolverResult::from_strategy_snapshot(
+            self.iterations,
+            entries_to_snapshot(&self.entries),
+        ))
+    }
+
+    fn validate_version(&self) -> Result<(), RiverArtifactError> {
+        if self.format_version == Self::FORMAT_VERSION {
+            Ok(())
+        } else {
+            Err(RiverArtifactError::UnsupportedFormatVersion {
+                expected: Self::FORMAT_VERSION,
+                actual: self.format_version,
+            })
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn to_json_string(&self) -> Result<String, RiverArtifactError> {
+        self.validate_version()?;
+        serde_json::to_string_pretty(self).map_err(|error| RiverArtifactError::Encode(error.to_string()))
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn from_json_str(input: &str) -> Result<Self, RiverArtifactError> {
+        let artifact = serde_json::from_str::<Self>(input)
+            .map_err(|error| RiverArtifactError::Decode(error.to_string()))?;
+        artifact.validate_version()?;
+        Ok(artifact)
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RiverStrategyEntry {
+    pub infoset: HoldemInfoSetKey,
+    pub actions: Vec<RiverActionProbability>,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RiverActionProbability {
+    pub action: AbstractAction,
+    pub probability: f64,
 }
 
 pub fn solve_river_spot(
@@ -113,10 +224,10 @@ pub fn solve_river_spot(
     let mut solver = CfrPlusSolver::new(RiverGameState::root(definition));
     solver.train_iterations(iterations);
 
-    Ok(RiverSolverResult {
-        iterations: solver.iterations(),
-        strategy: solver.average_strategy_snapshot(),
-    })
+    Ok(RiverSolverResult::from_strategy_snapshot(
+        solver.iterations(),
+        solver.average_strategy_snapshot(),
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -282,15 +393,133 @@ impl Display for RiverSolveError {
 
 impl Error for RiverSolveError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RiverArtifactError {
+    UnsupportedFormatVersion { expected: u32, actual: u32 },
+    Encode(String),
+    Decode(String),
+}
+
+impl Display for RiverArtifactError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedFormatVersion { expected, actual } => write!(
+                formatter,
+                "unsupported river artifact format version {actual}; expected {expected}"
+            ),
+            Self::Encode(error) => write!(formatter, "failed to encode river artifact: {error}"),
+            Self::Decode(error) => write!(formatter, "failed to decode river artifact: {error}"),
+        }
+    }
+}
+
+impl Error for RiverArtifactError {}
+
+fn snapshot_to_entries(
+    strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
+) -> Vec<RiverStrategyEntry> {
+    strategy
+        .into_iter()
+        .map(|(infoset, actions)| RiverStrategyEntry {
+            infoset,
+            actions: actions
+                .into_iter()
+                .map(|(action, probability)| RiverActionProbability {
+                    action,
+                    probability,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn entries_to_snapshot(
+    entries: &[RiverStrategyEntry],
+) -> HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>> {
+    entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.infoset.clone(),
+                entry
+                    .actions
+                    .iter()
+                    .map(|action| (action.action, action.probability))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn sort_strategy_entries(entries: &mut [RiverStrategyEntry]) {
+    for entry in entries.iter_mut() {
+        entry.actions.sort_by(|left, right| {
+            stable_action_key(left.action).cmp(&stable_action_key(right.action))
+        });
+    }
+    entries.sort_by(|left, right| {
+        stable_infoset_key(&left.infoset).cmp(&stable_infoset_key(&right.infoset))
+    });
+}
+
+fn stable_infoset_key(infoset: &HoldemInfoSetKey) -> String {
+    let public = &infoset.public_state;
+    let board = public
+        .board
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("");
+    let actor = public
+        .actor
+        .map(|player| player.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let history = infoset
+        .public_history
+        .iter()
+        .map(|action| stable_action_key(*action))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        infoset.player,
+        infoset.hole_cards,
+        public.street,
+        board,
+        actor,
+        public.pot,
+        public.button_stack,
+        public.big_blind_stack,
+        public.button_total_contribution,
+        public.big_blind_total_contribution,
+        public.button_street_contribution,
+        public.big_blind_street_contribution,
+        history,
+    )
+}
+
+fn stable_action_key(action: AbstractAction) -> String {
+    match action {
+        AbstractAction::Fold => "fold".to_string(),
+        AbstractAction::Check => "check".to_string(),
+        AbstractAction::Call => "call".to_string(),
+        AbstractAction::BetTo(total) => format!("bet:{total}"),
+        AbstractAction::RaiseTo(total) => format!("raise:{total}"),
+        AbstractAction::AllIn(total) => format!("allin:{total}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use gto_core::{HoldemStateError, Player, PlayerAction, Range};
 
     use crate::{
-        AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize, StreetProfile,
+        AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
+        StreetProfile,
     };
 
-    use super::{ScriptedRiverSpot, solve_river_spot};
+    use super::{RiverStrategyArtifact, ScriptedRiverSpot, solve_river_spot};
 
     fn river_profile_without_raises() -> AbstractionProfile {
         let preflop = StreetProfile {
@@ -405,5 +634,73 @@ mod tests {
             .expect_err("spot should reject duplicate cards");
 
         assert!(matches!(error, super::RiverSolveError::State(HoldemStateError::CardAlreadyInUse { .. })));
+    }
+
+    #[test]
+    fn river_artifact_json_round_trips_without_losing_strategy_queries() {
+        let spot = sample_spot();
+        let button_range: Range = "QhJc".parse().unwrap();
+        let big_blind_range: Range = "KhKd".parse().unwrap();
+        let profile = river_profile_without_raises();
+        let result = solve_river_spot(
+            spot.clone(),
+            button_range.clone(),
+            big_blind_range.clone(),
+            profile.clone(),
+            2_000,
+        )
+        .unwrap();
+        let artifact = result.into_artifact(
+            spot.clone(),
+            button_range,
+            big_blind_range,
+            profile,
+        );
+
+        let encoded = artifact.to_json_string().unwrap();
+        let decoded = RiverStrategyArtifact::from_json_str(&encoded).unwrap();
+        let restored = decoded.to_solver_result().unwrap();
+        let state = spot
+            .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
+            .unwrap();
+        let infoset = HoldemInfoSetKey::from_state(
+            Player::Button,
+            "QhJc".parse().unwrap(),
+            &state,
+            Vec::new(),
+        );
+
+        assert_eq!(
+            restored.choose_action_max(&infoset),
+            Some(AbstractAction::Fold)
+        );
+    }
+
+    #[test]
+    fn river_artifact_rejects_unknown_format_versions() {
+        let spot = sample_spot();
+        let button_range: Range = "QhJc".parse().unwrap();
+        let big_blind_range: Range = "KhKd".parse().unwrap();
+        let profile = river_profile_without_raises();
+        let result = solve_river_spot(
+            spot.clone(),
+            button_range.clone(),
+            big_blind_range.clone(),
+            profile.clone(),
+            100,
+        )
+        .unwrap();
+        let mut artifact = result.into_artifact(spot, button_range, big_blind_range, profile);
+        artifact.format_version += 1;
+
+        let error = artifact.to_solver_result().expect_err("version mismatch should fail");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "unsupported river artifact format version {}; expected {}",
+                RiverStrategyArtifact::FORMAT_VERSION + 1,
+                RiverStrategyArtifact::FORMAT_VERSION,
+            )
+        );
     }
 }

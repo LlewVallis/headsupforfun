@@ -16,4 +16,4 @@ parallel = ["gto-solver/parallel"]
 
 [dependencies]
 gto-core = { path = "../gto-core", default-features = false, features = ["std"] }
-gto-solver = { path = "../gto-solver", default-features = false, features = ["std"] }
+gto-solver = { path = "../gto-solver", default-features = false, features = ["std", "serde"] }

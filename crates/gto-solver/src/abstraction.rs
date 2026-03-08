@@ -1,5 +1,6 @@
 use gto_core::{Card, Chips, HoldemHandState, HoldemStateError, HoleCards, Player, PlayerAction, Street};
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbstractionProfile {
     preflop: StreetProfile,
@@ -51,6 +52,7 @@ impl AbstractionProfile {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreetProfile {
     pub opening_sizes: Vec<OpeningSize>,
@@ -58,18 +60,21 @@ pub struct StreetProfile {
     pub include_all_in: bool,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpeningSize {
     BigBlindMultipleBps(u32),
     PotFractionBps(u32),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RaiseSize {
     CurrentBetMultipleBps(u32),
     PotFractionAfterCallBps(u32),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AbstractAction {
     Fold,
@@ -93,6 +98,7 @@ impl AbstractAction {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PublicStateKey {
     pub street: Street,
@@ -127,6 +133,7 @@ impl PublicStateKey {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HoldemInfoSetKey {
     pub player: Player,

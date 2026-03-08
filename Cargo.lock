@@ -124,6 +124,7 @@ version = "0.1.0"
 dependencies = [
  "gto-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
