@@ -4,6 +4,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::thread;
@@ -35,26 +36,27 @@ fn run() -> Result<(), DynError> {
         return Ok(());
     };
 
-    let timeout = parse_timeout_secs(args.collect())?;
+    let remaining_args = args.collect::<Vec<_>>();
     let workspace_root = workspace_root()?;
 
     match command.as_str() {
         "test-fast" => run_cargo(
             &workspace_root,
             &["test", "--workspace"],
-            timeout.unwrap_or(FAST_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(FAST_TIMEOUT_SECS),
         ),
         "test-slow" => run_cargo(
             &workspace_root,
             &["test", "--workspace", "--", "--ignored"],
-            timeout.unwrap_or(SLOW_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(SLOW_TIMEOUT_SECS),
         ),
         "test-solver-slow" => run_cargo(
             &workspace_root,
             &["test", "-p", "gto-solver", "--", "--ignored"],
-            timeout.unwrap_or(SOLVER_SLOW_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(SOLVER_SLOW_TIMEOUT_SECS),
         ),
         "check-wasm" => {
+            let timeout = parse_timeout_secs(remaining_args)?;
             ensure_wasm_target_installed(&workspace_root)?;
             run_cargo(
                 &workspace_root,
@@ -71,6 +73,7 @@ fn run() -> Result<(), DynError> {
             )
         }
         "check-all" => {
+            let timeout = parse_timeout_secs(remaining_args)?;
             run_cargo(
                 &workspace_root,
                 &["test", "--workspace"],
@@ -91,77 +94,86 @@ fn run() -> Result<(), DynError> {
                 timeout.unwrap_or(WASM_TIMEOUT_SECS),
             )
         }
-        "train-smoke" => run_cargo(
-            &workspace_root,
-            &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "smoke"],
-            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
-        )
+        "train-smoke" => {
+            let timeout = parse_timeout_secs(remaining_args)?;
+            run_cargo(
+                &workspace_root,
+                &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "smoke"],
+                timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+            )
+        }
         .and_then(|_| {
             run_cargo(
                 &workspace_root,
                 &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "smoke"],
-                timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+                TRAIN_SMOKE_TIMEOUT_SECS,
             )
         })
         .and_then(|_| {
             run_cargo(
                 &workspace_root,
                 &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "smoke"],
-                timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+                TRAIN_SMOKE_TIMEOUT_SECS,
             )
         }),
-        "train-dev" => run_cargo(
-            &workspace_root,
-            &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "dev"],
-            timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
-        )
+        "train-dev" => {
+            let timeout = parse_timeout_secs(remaining_args)?;
+            run_cargo(
+                &workspace_root,
+                &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "dev"],
+                timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
+            )
+        }
         .and_then(|_| {
             run_cargo(
                 &workspace_root,
                 &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "dev"],
-                timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
+                TRAIN_DEV_TIMEOUT_SECS,
             )
         })
         .and_then(|_| {
             run_cargo(
                 &workspace_root,
                 &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "dev"],
-                timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
+                TRAIN_DEV_TIMEOUT_SECS,
             )
         }),
         "train-river-smoke" => run_cargo(
             &workspace_root,
             &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "smoke"],
-            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
         ),
         "train-turn-smoke" => run_cargo(
             &workspace_root,
             &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "smoke"],
-            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
         ),
         "train-flop-smoke" => run_cargo(
             &workspace_root,
             &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "smoke"],
-            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+            parse_timeout_secs(remaining_args)?.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
         ),
-        "bench-smoke" => run_cargo(
-            &workspace_root,
-            &[
-                "bench",
-                "-p",
-                "gto-core",
-                "--bench",
-                "hand_eval_smoke",
-                "--",
-                "--sample-size",
-                "10",
-                "--warm-up-time",
-                "0.05",
-                "--measurement-time",
-                "0.05",
-            ],
-            timeout.unwrap_or(BENCH_SMOKE_TIMEOUT_SECS),
-        )
+        "bench-smoke" => {
+            let timeout = parse_timeout_secs(remaining_args)?;
+            run_cargo(
+                &workspace_root,
+                &[
+                    "bench",
+                    "-p",
+                    "gto-core",
+                    "--bench",
+                    "hand_eval_smoke",
+                    "--",
+                    "--sample-size",
+                    "10",
+                    "--warm-up-time",
+                    "0.05",
+                    "--measurement-time",
+                    "0.05",
+                ],
+                timeout.unwrap_or(BENCH_SMOKE_TIMEOUT_SECS),
+            )
+        }
         .and_then(|_| {
             run_cargo(
                 &workspace_root,
@@ -179,9 +191,13 @@ fn run() -> Result<(), DynError> {
                     "--measurement-time",
                     "0.05",
                 ],
-                timeout.unwrap_or(BENCH_SMOKE_TIMEOUT_SECS),
+                BENCH_SMOKE_TIMEOUT_SECS,
             )
         }),
+        "eval-texassolver" => run_eval_texassolver(
+            &workspace_root,
+            parse_eval_texassolver_args(remaining_args)?,
+        ),
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -214,6 +230,110 @@ fn parse_timeout_secs(arguments: Vec<String>) -> Result<Option<u64>, DynError> {
     }
 
     Ok(Some(seconds))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EvalTexasSolverArgs {
+    suite: String,
+    input: PathBuf,
+    output_dir: Option<PathBuf>,
+}
+
+fn parse_eval_texassolver_args(arguments: Vec<String>) -> Result<EvalTexasSolverArgs, DynError> {
+    let mut suite = None;
+    let mut input = None;
+    let mut output_dir = None;
+    let mut index = 0;
+
+    while index < arguments.len() {
+        match arguments[index].as_str() {
+            "--suite" => {
+                index += 1;
+                suite = arguments.get(index).cloned();
+            }
+            "--input" => {
+                index += 1;
+                input = arguments.get(index).map(PathBuf::from);
+            }
+            "--output-dir" => {
+                index += 1;
+                output_dir = arguments.get(index).map(PathBuf::from);
+            }
+            "--timeout-secs" => {
+                index += 1;
+            }
+            other => {
+                return Err(Box::new(XtaskError::new(format!(
+                    "unknown eval-texassolver argument `{other}`"
+                ))));
+            }
+        }
+        index += 1;
+    }
+
+    let suite = suite.ok_or_else(|| Box::new(XtaskError::new("missing required `--suite <name>`")) as DynError)?;
+    let input = input.ok_or_else(|| Box::new(XtaskError::new("missing required `--input <path>`")) as DynError)?;
+
+    Ok(EvalTexasSolverArgs {
+        suite,
+        input,
+        output_dir,
+    })
+}
+
+fn run_eval_texassolver(
+    workspace_root: &Path,
+    args: EvalTexasSolverArgs,
+) -> Result<(), DynError> {
+    let suite = match args.suite.as_str() {
+        "smoke" => gto_solver::texassolver_smoke_suite(),
+        other => {
+            return Err(Box::new(XtaskError::new(format!(
+                "unknown TexasSolver suite `{other}`; only `smoke` is supported"
+            ))))
+        }
+    };
+    let reference_input = fs::read_to_string(workspace_root.join(&args.input))?;
+    let references = gto_solver::TexasSolverReferenceSuite::from_json_str(&reference_input)?;
+    let report = gto_solver::grade_texassolver_suite(&suite, &references);
+
+    let output_dir = args.output_dir.unwrap_or_else(|| {
+        workspace_root
+            .join("artifacts")
+            .join("eval")
+            .join("texassolver")
+            .join(&args.suite)
+    });
+    fs::create_dir_all(&output_dir)?;
+
+    let exports = suite
+        .spots
+        .iter()
+        .map(|spot| spot.export_for_texassolver())
+        .collect::<Result<Vec<_>, _>>()?;
+
+    fs::write(output_dir.join("spot_suite.json"), suite.to_json_string()?)?;
+    fs::write(output_dir.join("report.json"), report.to_json_string()?)?;
+    fs::write(
+        output_dir.join("exports.json"),
+        serde_json::to_string_pretty(&exports)?,
+    )?;
+    for export in &exports {
+        fs::write(output_dir.join(format!("{}.txt", export.spot_id)), &export.script)?;
+    }
+
+    println!("{}", report.terminal_summary());
+    for result in &report.results {
+        println!(
+            "{} [{}] our={:?} ref={:?} ev_gap={:?}",
+            result.spot_id,
+            format!("{:?}", result.status).to_ascii_lowercase(),
+            result.our_action,
+            result.reference_best_action,
+            result.ev_gap,
+        );
+    }
+    Ok(())
 }
 
 fn workspace_root() -> Result<PathBuf, DynError> {
@@ -307,6 +427,7 @@ Usage:
   cargo xtask train-turn-smoke [--timeout-secs <seconds>]
   cargo xtask train-flop-smoke [--timeout-secs <seconds>]
   cargo xtask bench-smoke [--timeout-secs <seconds>]
+  cargo xtask eval-texassolver --suite <name> --input <path> [--output-dir <path>]
 
 Commands:
   test-fast   Run the fast workspace test suite.
@@ -320,6 +441,7 @@ Commands:
   train-turn-smoke  Train only the bundled turn demo artifact with the smoke profile.
   train-flop-smoke  Train only the bundled flop demo artifact with the smoke profile.
   bench-smoke Run small criterion benchmark slices for evaluator and blueprint lookup hot paths.
+  eval-texassolver Export the curated TexasSolver smoke spots, grade them against a reference JSON, and write artifacts/eval output.
 "
     );
 }
@@ -349,7 +471,10 @@ impl Error for XtaskError {}
 mod tests {
     use std::ffi::OsString;
 
-    use super::{format_command, parse_timeout_secs, workspace_root};
+    use super::{
+        EvalTexasSolverArgs, format_command, parse_eval_texassolver_args, parse_timeout_secs,
+        workspace_root,
+    };
 
     #[test]
     fn parse_timeout_secs_accepts_empty_arguments() {
@@ -400,5 +525,41 @@ mod tests {
         let root = workspace_root().unwrap();
         assert!(root.join("Cargo.toml").exists());
         assert!(root.join("PLAN.md").exists());
+    }
+
+    #[test]
+    fn parse_eval_texassolver_args_accepts_required_fields() {
+        assert_eq!(
+            parse_eval_texassolver_args(vec![
+                "--suite".into(),
+                "smoke".into(),
+                "--input".into(),
+                "fixtures/eval/texassolver/smoke_reference.json".into(),
+                "--output-dir".into(),
+                "artifacts/eval/texassolver/smoke".into(),
+            ])
+            .unwrap(),
+            EvalTexasSolverArgs {
+                suite: "smoke".into(),
+                input: "fixtures/eval/texassolver/smoke_reference.json".into(),
+                output_dir: Some("artifacts/eval/texassolver/smoke".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_eval_texassolver_args_rejects_unknown_tokens_and_missing_fields() {
+        assert_eq!(
+            parse_eval_texassolver_args(vec!["--suite".into(), "smoke".into()])
+                .unwrap_err()
+                .to_string(),
+            "missing required `--input <path>`"
+        );
+        assert_eq!(
+            parse_eval_texassolver_args(vec!["--bad".into(), "value".into()])
+                .unwrap_err()
+                .to_string(),
+            "unknown eval-texassolver argument `--bad`"
+        );
     }
 }
