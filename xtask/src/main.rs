@@ -95,6 +95,13 @@ fn run() -> Result<(), DynError> {
                 &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "smoke"],
                 timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
             )
+        })
+        .and_then(|_| {
+            run_cargo(
+                &workspace_root,
+                &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "smoke"],
+                timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+            )
         }),
         "train-dev" => run_cargo(
             &workspace_root,
@@ -107,6 +114,13 @@ fn run() -> Result<(), DynError> {
                 &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "dev"],
                 timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
             )
+        })
+        .and_then(|_| {
+            run_cargo(
+                &workspace_root,
+                &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "dev"],
+                timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
+            )
         }),
         "train-river-smoke" => run_cargo(
             &workspace_root,
@@ -116,6 +130,11 @@ fn run() -> Result<(), DynError> {
         "train-turn-smoke" => run_cargo(
             &workspace_root,
             &["run", "-p", "gto-cli", "--", "train-turn-demo", "--profile", "smoke"],
+            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+        ),
+        "train-flop-smoke" => run_cargo(
+            &workspace_root,
+            &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "smoke"],
             timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
         ),
         "help" | "--help" | "-h" => {
@@ -240,16 +259,18 @@ Usage:
   cargo xtask train-dev [--timeout-secs <seconds>]
   cargo xtask train-river-smoke [--timeout-secs <seconds>]
   cargo xtask train-turn-smoke [--timeout-secs <seconds>]
+  cargo xtask train-flop-smoke [--timeout-secs <seconds>]
 
 Commands:
   test-fast   Run the fast workspace test suite.
   test-slow   Run ignored tests intended for opt-in slow coverage.
   check-wasm  Compile-check gto-core and gto-solver for wasm32-unknown-unknown.
   check-all   Run test-fast and check-wasm in sequence.
-  train-smoke Train the bundled river and turn demo artifacts with smoke profiles.
-  train-dev   Train the bundled river and turn demo artifacts with dev profiles.
+  train-smoke Train the bundled river, turn, and flop demo artifacts with smoke profiles.
+  train-dev   Train the bundled river, turn, and flop demo artifacts with dev profiles.
   train-river-smoke Train only the bundled river demo artifact with the smoke profile.
   train-turn-smoke  Train only the bundled turn demo artifact with the smoke profile.
+  train-flop-smoke  Train only the bundled flop demo artifact with the smoke profile.
 "
     );
 }

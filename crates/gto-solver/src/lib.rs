@@ -2,7 +2,9 @@
 #![doc = "Portable solver interfaces and strategy infrastructure."]
 
 mod abstraction;
+mod bot;
 mod cfr;
+mod flop;
 mod kuhn;
 mod river;
 mod training;
@@ -15,9 +17,16 @@ pub use abstraction::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, PublicStateKey,
     RaiseSize, StreetProfile, abstract_actions,
 };
+pub use bot::{PostflopSolverBot, PostflopSolverBotConfig, PostflopSolverBotError};
 pub use cfr::{
     CfrCheckpoint, CfrCheckpointError, CfrInfoSetCheckpoint, CfrPlusSolver,
     ExtensiveGameState, GameNode,
+};
+pub use flop::{
+    FlopActionProbability, FlopArtifactError, FlopCheckpointError, FlopSolveError,
+    FlopSolverResult, FlopStrategyArtifact, FlopStrategyEntry, FlopTrainingCheckpoint,
+    FlopTrainingError, FlopTrainingProfile, FlopTrainingSession, ScriptedFlopSpot,
+    solve_flop_spot,
 };
 pub use kuhn::{KuhnAction, KuhnCard, KuhnInfoSet, KuhnState};
 pub use river::{

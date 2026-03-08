@@ -1,3 +1,4 @@
 /target
 /.idea
 /fixtures/checkpoints
+/fixtures/strategies/flop_demo.json

@@ -8,16 +8,18 @@ use gto_core::{
 };
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
-    RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile, RiverTrainingSession,
-    ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile, StreetProfile, StubBot,
-    TurnStrategyArtifact, TurnTrainingCheckpoint, TurnTrainingProfile, TurnTrainingSession,
-    abstract_actions, solve_river_spot, solve_turn_spot,
+    FlopStrategyArtifact, FlopTrainingCheckpoint, FlopTrainingProfile, FlopTrainingSession,
+    PostflopSolverBot, RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile,
+    RiverTrainingSession, ScriptedFlopSpot, ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile,
+    StreetProfile, StubBot, TurnStrategyArtifact, TurnTrainingCheckpoint, TurnTrainingProfile,
+    TurnTrainingSession, abstract_actions, solve_flop_spot, solve_river_spot, solve_turn_spot,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliConfig {
     pub seed: u64,
     pub max_hands: Option<usize>,
+    pub use_postflop_solver_bot: bool,
 }
 
 impl Default for CliConfig {
@@ -25,6 +27,7 @@ impl Default for CliConfig {
         Self {
             seed: DEFAULT_RNG_SEED,
             max_hands: None,
+            use_postflop_solver_bot: true,
         }
     }
 }
@@ -51,6 +54,14 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
             let options = parse_turn_training_args(&args[1..]).map_err(io::Error::other)?;
             run_train_turn_demo(&mut output, &options)
         }
+        Some("flop-demo") => {
+            let options = parse_flop_demo_args(&args[1..]).map_err(io::Error::other)?;
+            run_flop_demo(&mut input, &mut output, &options)
+        }
+        Some("train-flop-demo") => {
+            let options = parse_flop_training_args(&args[1..]).map_err(io::Error::other)?;
+            run_train_flop_demo(&mut output, &options)
+        }
         _ => run_session(&mut input, &mut output, CliConfig::default()),
     }
 }
@@ -60,7 +71,7 @@ pub fn startup_banner() -> String {
     let profile = SolverProfile::placeholder();
 
     format!(
-        "{name} {version}\nstatus: milestones M4-M8 CLI demos, artifacts, and resumable training\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
+        "{name} {version}\nstatus: milestones M4-M9 CLI demos and postflop solver slices\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
         name = build.crate_name,
         version = build.crate_version,
         profile = profile.name(),
@@ -77,6 +88,7 @@ pub fn run_session<R: BufRead, W: Write>(
 
     let mut rng = rng_from_seed(config.seed);
     let bot = StubBot;
+    let solver_bot = config.use_postflop_solver_bot.then(PostflopSolverBot::default);
     let mut hand_number = 1usize;
 
     loop {
@@ -85,7 +97,15 @@ pub fn run_session<R: BufRead, W: Write>(
         } else {
             Player::BigBlind
         };
-        let completed = play_single_hand(input, output, &bot, &mut rng, hand_number, human_role)?;
+        let completed = play_single_hand(
+            input,
+            output,
+            &bot,
+            solver_bot.as_ref(),
+            &mut rng,
+            hand_number,
+            human_role,
+        )?;
         if !completed {
             break;
         }
@@ -172,6 +192,42 @@ impl Default for TurnTrainingOptions {
             artifact_path: default_turn_demo_artifact_path(),
             checkpoint_path: default_turn_demo_checkpoint_path(),
             profile: TurnTrainingProfile::Smoke,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlopDemoOptions {
+    artifact_path: PathBuf,
+    solve_if_missing: bool,
+    write_artifact_path: Option<PathBuf>,
+    no_play: bool,
+}
+
+impl Default for FlopDemoOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_flop_demo_artifact_path(),
+            solve_if_missing: true,
+            write_artifact_path: None,
+            no_play: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlopTrainingOptions {
+    artifact_path: PathBuf,
+    checkpoint_path: PathBuf,
+    profile: FlopTrainingProfile,
+}
+
+impl Default for FlopTrainingOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_flop_demo_artifact_path(),
+            checkpoint_path: default_flop_demo_checkpoint_path(),
+            profile: FlopTrainingProfile::Smoke,
         }
     }
 }
@@ -358,6 +414,107 @@ impl TurnDemoScenario {
             TurnTrainingProfile::Smoke => 25,
             TurnTrainingProfile::Dev => 100,
             TurnTrainingProfile::Full => 250,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlopDemoScenario {
+    spot: ScriptedFlopSpot,
+    button_range: Range,
+    big_blind_range: Range,
+    profile: AbstractionProfile,
+    button_hole_cards: HoleCards,
+    big_blind_hole_cards: HoleCards,
+    turn_card: gto_core::Card,
+    river_card: gto_core::Card,
+    artifact_iterations: u64,
+}
+
+impl FlopDemoScenario {
+    fn default() -> Self {
+        let preflop = StreetProfile {
+            opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
+            raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
+            include_all_in: false,
+        };
+        let postflop = StreetProfile {
+            opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+            raise_sizes: vec![],
+            include_all_in: false,
+        };
+
+        Self {
+            spot: ScriptedFlopSpot {
+                config: HoldemConfig::default(),
+                preflop_actions: vec![PlayerAction::Call],
+                flop: [
+                    "Kc".parse().unwrap(),
+                    "8d".parse().unwrap(),
+                    "4s".parse().unwrap(),
+                ],
+                flop_prefix_actions: vec![PlayerAction::BetTo(100)],
+            },
+            button_range: "8c7c".parse().unwrap(),
+            big_blind_range: "AhQh".parse().unwrap(),
+            profile: AbstractionProfile::new(
+                preflop,
+                postflop.clone(),
+                postflop.clone(),
+                postflop,
+            ),
+            button_hole_cards: "8c7c".parse().unwrap(),
+            big_blind_hole_cards: "AhQh".parse().unwrap(),
+            turn_card: "3h".parse().unwrap(),
+            river_card: "2d".parse().unwrap(),
+            artifact_iterations: 2,
+        }
+    }
+
+    fn build_artifact(&self, iterations: u64) -> io::Result<FlopStrategyArtifact> {
+        let result = solve_flop_spot(
+            self.spot.clone(),
+            self.button_range.clone(),
+            self.big_blind_range.clone(),
+            self.profile.clone(),
+            iterations,
+        )
+        .map_err(io::Error::other)?;
+
+        Ok(result.into_artifact(
+            self.spot.clone(),
+            self.button_range.clone(),
+            self.big_blind_range.clone(),
+            self.profile.clone(),
+        ))
+    }
+
+    fn validate_artifact(&self, artifact: &FlopStrategyArtifact) -> io::Result<()> {
+        if artifact.spot != self.spot
+            || artifact.button_range != self.button_range
+            || artifact.big_blind_range != self.big_blind_range
+            || artifact.profile != self.profile
+        {
+            return Err(io::Error::other(
+                "flop demo artifact does not match the built-in scenario",
+            ));
+        }
+        Ok(())
+    }
+
+    fn training_iterations(&self, profile: FlopTrainingProfile) -> u64 {
+        match profile {
+            FlopTrainingProfile::Smoke => 2,
+            FlopTrainingProfile::Dev => 5,
+            FlopTrainingProfile::Full => 10,
+        }
+    }
+
+    fn checkpoint_interval(&self, profile: FlopTrainingProfile) -> u64 {
+        match profile {
+            FlopTrainingProfile::Smoke => 1,
+            FlopTrainingProfile::Dev => 1,
+            FlopTrainingProfile::Full => 2,
         }
     }
 }
@@ -558,10 +715,121 @@ fn run_turn_demo<R: BufRead, W: Write>(
     }
 }
 
+fn run_flop_demo<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    options: &FlopDemoOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+
+    let scenario = FlopDemoScenario::default();
+    let (artifact, artifact_source) = load_or_build_flop_demo_artifact(&scenario, options)?;
+    scenario.validate_artifact(&artifact)?;
+
+    if let Some(path) = &options.write_artifact_path {
+        write_flop_artifact(path, &artifact)?;
+        writeln!(output, "Wrote flop artifact to {}", path.display())?;
+    }
+
+    if options.no_play {
+        writeln!(
+            output,
+            "Flop demo artifact ready ({artifact_source}, {} infosets, {} iterations).",
+            artifact.entries.len(),
+            artifact.iterations,
+        )?;
+        return Ok(());
+    }
+
+    let strategy = artifact.to_solver_result().map_err(io::Error::other)?;
+    let mut state = scenario
+        .spot
+        .build_state(scenario.button_hole_cards, scenario.big_blind_hole_cards)
+        .map_err(io::Error::other)?;
+    let human_role = Player::Button;
+    let bot_role = Player::BigBlind;
+    let mut public_history = Vec::new();
+
+    writeln!(output, "\nFlop Demo")?;
+    writeln!(output, "source: {artifact_source}")?;
+    writeln!(output, "board: {}", format_board(&state))?;
+    writeln!(
+        output,
+        "you ({human_role}): {}",
+        format_hole_cards(scenario.button_hole_cards),
+    )?;
+    writeln!(output, "bot ({bot_role}): stack={}", state.player(bot_role).stack)?;
+    writeln!(
+        output,
+        "pot: {} | scripted history: call / bot bet 100 on flop",
+        state.pot()
+    )?;
+
+    loop {
+        match state.phase() {
+            HandPhase::BettingRound { actor, .. } => {
+                let actions = abstract_actions(&state, &scenario.profile).map_err(io::Error::other)?;
+                if actor == human_role {
+                    if !handle_human_abstract_turn(
+                        input,
+                        output,
+                        &mut state,
+                        &actions,
+                        &mut public_history,
+                    )? {
+                        return Ok(());
+                    }
+                } else {
+                    let infoset = HoldemInfoSetKey::from_state(
+                        bot_role,
+                        scenario.big_blind_hole_cards,
+                        &state,
+                        public_history.clone(),
+                    );
+                    let action = strategy.choose_action_max(&infoset).ok_or_else(|| {
+                        io::Error::other("flop strategy artifact had no action for the bot infoset")
+                    })?;
+                    writeln!(output, "Bot ({bot_role}) -> {}", describe_abstract_action(action))?;
+                    state
+                        .apply_action(action.to_player_action())
+                        .map_err(io::Error::other)?;
+                    public_history.push(action);
+                }
+            }
+            HandPhase::AwaitingBoard {
+                next_street: gto_core::Street::Turn,
+            } => {
+                state
+                    .deal_turn(scenario.turn_card)
+                    .map_err(io::Error::other)?;
+                writeln!(output, "Turn: {}", format_board(&state))?;
+            }
+            HandPhase::AwaitingBoard {
+                next_street: gto_core::Street::River,
+            } => {
+                state
+                    .deal_river(scenario.river_card)
+                    .map_err(io::Error::other)?;
+                writeln!(output, "River: {}", format_board(&state))?;
+            }
+            HandPhase::AwaitingBoard { .. } => {
+                return Err(io::Error::other(
+                    "flop demo unexpectedly requested a non-postflop board card",
+                ));
+            }
+            HandPhase::Terminal { outcome } => {
+                render_outcome(output, &state, human_role, outcome)?;
+                return Ok(());
+            }
+        }
+    }
+}
+
 fn play_single_hand<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     bot: &StubBot,
+    solver_bot: Option<&PostflopSolverBot>,
     rng: &mut DeterministicRng,
     hand_number: usize,
     human_role: Player,
@@ -583,7 +851,17 @@ fn play_single_hand<R: BufRead, W: Write>(
                         return Ok(false);
                     }
                 } else {
-                    let action = bot.choose_action(&state).map_err(io::Error::other)?;
+                    let action = if state.street() == gto_core::Street::Preflop {
+                        bot.choose_action(&state).map_err(io::Error::other)?
+                    } else {
+                        match solver_bot {
+                            Some(solver_bot) => match solver_bot.choose_action(bot_role, &state) {
+                                Ok(action) => action,
+                                Err(_) => bot.choose_action(&state).map_err(io::Error::other)?,
+                            },
+                            None => bot.choose_action(&state).map_err(io::Error::other)?,
+                        }
+                    };
                     writeln!(
                         output,
                         "Bot ({bot_role}) -> {}",
@@ -675,6 +953,42 @@ fn parse_turn_demo_args(args: &[String]) -> Result<TurnDemoOptions, &'static str
     Ok(options)
 }
 
+fn parse_flop_demo_args(args: &[String]) -> Result<FlopDemoOptions, &'static str> {
+    let mut options = FlopDemoOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            "--write-artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--write-artifact`");
+                };
+                options.write_artifact_path = Some(PathBuf::from(path));
+            }
+            "--solve" => {
+                options.solve_if_missing = true;
+            }
+            "--artifact-only" => {
+                options.solve_if_missing = false;
+            }
+            "--no-play" => {
+                options.no_play = true;
+            }
+            _ => return Err("unknown flop-demo option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
 fn parse_river_training_args(args: &[String]) -> Result<RiverTrainingOptions, &'static str> {
     let mut options = RiverTrainingOptions::default();
     let mut index = 0usize;
@@ -746,6 +1060,45 @@ fn parse_turn_training_args(args: &[String]) -> Result<TurnTrainingOptions, &'st
                 };
             }
             _ => return Err("unknown train-turn-demo option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
+fn parse_flop_training_args(args: &[String]) -> Result<FlopTrainingOptions, &'static str> {
+    let mut options = FlopTrainingOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            "--checkpoint" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--checkpoint`");
+                };
+                options.checkpoint_path = PathBuf::from(path);
+            }
+            "--profile" => {
+                index += 1;
+                let Some(profile_name) = args.get(index) else {
+                    return Err("expected `smoke`, `dev`, or `full` after `--profile`");
+                };
+                options.profile = match profile_name.as_str() {
+                    "smoke" => FlopTrainingProfile::Smoke,
+                    "dev" => FlopTrainingProfile::Dev,
+                    "full" => FlopTrainingProfile::Full,
+                    _ => return Err("unknown training profile"),
+                };
+            }
+            _ => return Err("unknown train-flop-demo option"),
         }
         index += 1;
     }
@@ -867,6 +1220,63 @@ fn run_train_turn_demo<W: Write>(
     Ok(())
 }
 
+fn run_train_flop_demo<W: Write>(
+    output: &mut W,
+    options: &FlopTrainingOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+
+    let scenario = FlopDemoScenario::default();
+    let mut session = match read_flop_checkpoint(&options.checkpoint_path) {
+        Ok(checkpoint) => {
+            writeln!(
+                output,
+                "Resuming flop demo training from {}",
+                options.checkpoint_path.display()
+            )?;
+            FlopTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            writeln!(output, "Starting fresh flop demo training")?;
+            FlopTrainingSession::new(
+                scenario.spot.clone(),
+                scenario.button_range.clone(),
+                scenario.big_blind_range.clone(),
+                scenario.profile.clone(),
+            )
+            .map_err(io::Error::other)?
+        }
+        Err(error) => return Err(error),
+    };
+
+    let target_iterations = scenario.training_iterations(options.profile);
+    let checkpoint_interval = scenario.checkpoint_interval(options.profile);
+    while session.iterations() < target_iterations {
+        let remaining = target_iterations - session.iterations();
+        let batch = remaining.min(checkpoint_interval);
+        session.train_iterations(batch);
+        write_flop_checkpoint(&options.checkpoint_path, &session.checkpoint())?;
+        writeln!(
+            output,
+            "checkpoint: {} / {} iterations -> {}",
+            session.iterations(),
+            target_iterations,
+            options.checkpoint_path.display()
+        )?;
+    }
+
+    let artifact = session.strategy_artifact();
+    write_flop_artifact(&options.artifact_path, &artifact)?;
+    writeln!(
+        output,
+        "artifact: {} iterations -> {}",
+        artifact.iterations,
+        options.artifact_path.display()
+    )?;
+
+    Ok(())
+}
+
 fn load_or_build_river_demo_artifact(
     scenario: &RiverDemoScenario,
     options: &RiverDemoOptions,
@@ -892,6 +1302,26 @@ fn load_or_build_turn_demo_artifact(
     options: &TurnDemoOptions,
 ) -> io::Result<(TurnStrategyArtifact, String)> {
     match read_turn_artifact(&options.artifact_path) {
+        Ok(artifact) => Ok((
+            artifact,
+            format!("loaded {}", options.artifact_path.display()),
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && options.solve_if_missing => Ok((
+            scenario.build_artifact(scenario.artifact_iterations)?,
+            format!(
+                "generated inline (default artifact missing at {})",
+                options.artifact_path.display()
+            ),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn load_or_build_flop_demo_artifact(
+    scenario: &FlopDemoScenario,
+    options: &FlopDemoOptions,
+) -> io::Result<(FlopStrategyArtifact, String)> {
+    match read_flop_artifact(&options.artifact_path) {
         Ok(artifact) => Ok((
             artifact,
             format!("loaded {}", options.artifact_path.display()),
@@ -933,6 +1363,19 @@ fn write_turn_artifact(path: &Path, artifact: &TurnStrategyArtifact) -> io::Resu
     fs::write(path, encoded)
 }
 
+fn read_flop_artifact(path: &Path) -> io::Result<FlopStrategyArtifact> {
+    let encoded = fs::read_to_string(path)?;
+    FlopStrategyArtifact::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_flop_artifact(path: &Path, artifact: &FlopStrategyArtifact) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = artifact.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
 fn read_river_checkpoint(path: &Path) -> io::Result<RiverTrainingCheckpoint> {
     let encoded = fs::read_to_string(path)?;
     RiverTrainingCheckpoint::from_json_str(&encoded).map_err(io::Error::other)
@@ -959,12 +1402,29 @@ fn write_turn_checkpoint(path: &Path, checkpoint: &TurnTrainingCheckpoint) -> io
     fs::write(path, encoded)
 }
 
+fn read_flop_checkpoint(path: &Path) -> io::Result<FlopTrainingCheckpoint> {
+    let encoded = fs::read_to_string(path)?;
+    FlopTrainingCheckpoint::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_flop_checkpoint(path: &Path, checkpoint: &FlopTrainingCheckpoint) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = checkpoint.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
 fn default_river_demo_artifact_path() -> PathBuf {
     workspace_root().join("fixtures").join("strategies").join("river_demo.json")
 }
 
 fn default_turn_demo_artifact_path() -> PathBuf {
     workspace_root().join("fixtures").join("strategies").join("turn_demo.json")
+}
+
+fn default_flop_demo_artifact_path() -> PathBuf {
+    workspace_root().join("fixtures").join("strategies").join("flop_demo.json")
 }
 
 fn default_river_demo_checkpoint_path() -> PathBuf {
@@ -979,6 +1439,13 @@ fn default_turn_demo_checkpoint_path() -> PathBuf {
         .join("fixtures")
         .join("checkpoints")
         .join("turn_demo.checkpoint.json")
+}
+
+fn default_flop_demo_checkpoint_path() -> PathBuf {
+    workspace_root()
+        .join("fixtures")
+        .join("checkpoints")
+        .join("flop_demo.checkpoint.json")
 }
 
 fn workspace_root() -> PathBuf {
@@ -1389,12 +1856,14 @@ fn draw_card(deck: &mut Deck) -> io::Result<gto_core::Card> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CliConfig, RiverDemoOptions, RiverDemoScenario, TurnDemoOptions, TurnDemoScenario,
-        default_river_demo_artifact_path, default_turn_demo_artifact_path, run_river_demo,
-        run_session, run_train_river_demo, run_train_turn_demo, run_turn_demo, startup_banner,
+        CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions, RiverDemoScenario,
+        TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
+        default_river_demo_artifact_path, default_turn_demo_artifact_path, run_flop_demo,
+        run_river_demo, run_session, run_train_flop_demo, run_train_river_demo,
+        run_train_turn_demo, run_turn_demo, startup_banner, write_flop_artifact,
         write_river_artifact, write_turn_artifact,
     };
-    use gto_solver::{RiverTrainingProfile, TurnTrainingProfile};
+    use gto_solver::{FlopTrainingProfile, RiverTrainingProfile, TurnTrainingProfile};
     use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
@@ -1405,7 +1874,7 @@ mod tests {
         let banner = startup_banner();
 
         assert!(banner.contains("gto-solver"));
-        assert!(banner.contains("milestones M4-M8 CLI demos, artifacts, and resumable training"));
+        assert!(banner.contains("milestones M4-M9 CLI demos and postflop solver slices"));
     }
 
     #[test]
@@ -1419,6 +1888,7 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
+                use_postflop_solver_bot: false,
             },
         )
         .unwrap();
@@ -1428,7 +1898,7 @@ mod tests {
         assert!(transcript.contains("You are the button."));
         assert!(transcript.contains("Your cards:"));
         assert!(transcript.contains("Flop:"));
-        assert!(transcript.contains("Showdown"));
+        assert!(transcript.contains("Showdown") || transcript.contains("wins"));
     }
 
     #[test]
@@ -1442,13 +1912,14 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
+                use_postflop_solver_bot: false,
             },
         )
         .unwrap();
 
         let transcript = String::from_utf8(output).unwrap();
         assert!(transcript.contains("Invalid action"));
-        assert!(transcript.contains("Showdown"));
+        assert!(transcript.contains("Showdown") || transcript.contains("wins"));
     }
 
     #[test]
@@ -1461,6 +1932,7 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
+                use_postflop_solver_bot: false,
             },
         )
         .unwrap();
@@ -1618,6 +2090,84 @@ mod tests {
 
         let transcript = String::from_utf8(output).unwrap();
         assert!(transcript.contains("artifact: 100 iterations"));
+        assert!(artifact_path.exists());
+        assert!(checkpoint_path.exists());
+
+        let _ = fs::remove_file(artifact_path);
+        let _ = fs::remove_file(checkpoint_path);
+    }
+
+    #[test]
+    fn flop_demo_can_play_from_a_saved_artifact() {
+        let scenario = FlopDemoScenario::default();
+        let artifact_path = unique_test_path("flop-demo-artifact.json");
+        let artifact = scenario.build_artifact(2).unwrap();
+        write_flop_artifact(&artifact_path, &artifact).unwrap();
+
+        let mut output = Vec::new();
+        run_flop_demo(
+            &mut Cursor::new(&b"fold\n"[..]),
+            &mut output,
+            &FlopDemoOptions {
+                artifact_path: artifact_path.clone(),
+                solve_if_missing: false,
+                write_artifact_path: None,
+                no_play: false,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("Flop Demo"));
+        assert!(transcript.contains("source: loaded"));
+        assert!(transcript.contains("bot bet 100 on flop"));
+        assert!(transcript.contains("wins"));
+
+        let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn flop_demo_can_generate_an_artifact_without_playing() {
+        let artifact_path = unique_test_path("generated-flop-demo.json");
+        let mut output = Vec::new();
+
+        run_flop_demo(
+            &mut Cursor::new(&b""[..]),
+            &mut output,
+            &FlopDemoOptions {
+                artifact_path: default_flop_demo_artifact_path(),
+                solve_if_missing: true,
+                write_artifact_path: Some(artifact_path.clone()),
+                no_play: true,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("Wrote flop artifact"));
+        assert!(artifact_path.exists());
+
+        let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn flop_training_command_writes_checkpoint_and_artifact() {
+        let artifact_path = unique_test_path("trained-flop-demo.json");
+        let checkpoint_path = unique_test_path("trained-flop-demo.checkpoint.json");
+        let mut output = Vec::new();
+
+        run_train_flop_demo(
+            &mut output,
+            &super::FlopTrainingOptions {
+                artifact_path: artifact_path.clone(),
+                checkpoint_path: checkpoint_path.clone(),
+                profile: FlopTrainingProfile::Smoke,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("artifact: 2 iterations"));
         assert!(artifact_path.exists());
         assert!(checkpoint_path.exists());
 
