@@ -6,6 +6,7 @@ test('renders the poker bootstrap screen', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'GTO Poker' }),
   ).toBeVisible()
-  await expect(page.getByLabel('Poker table preview')).toBeVisible()
-  await expect(page.getByText('Next implementation step')).toBeVisible()
+  await expect(page.getByLabel('Poker table')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Call' })).toBeVisible()
+  await expect(page.getByLabel('Hand history')).toBeVisible()
 })

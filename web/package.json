@@ -4,12 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run wasm:build:dev",
     "dev": "vite",
+    "wasm:build:dev": "wasm-pack build ../crates/gto-web --target web --out-dir ../../web/src/generated/gto-web --dev",
+    "wasm:build": "wasm-pack build ../crates/gto-web --target web --out-dir ../../web/src/generated/gto-web --release",
+    "prebuild": "npm run wasm:build",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretest:e2e": "npm run wasm:build:dev",
     "test:e2e": "playwright test"
   },
   "dependencies": {
