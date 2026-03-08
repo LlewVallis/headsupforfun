@@ -100,6 +100,35 @@ describe('PokerWorkerRuntime', () => {
     expect(response).toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
   })
 
+  it('waits for a forced human-action delay when requested by the test harness', async () => {
+    vi.useFakeTimers()
+    const applyHumanAction = vi.fn(() => mockSnapshot)
+    const runtime = new PokerWorkerRuntime({
+      initWasm: vi.fn(async () => undefined),
+      createSession: vi.fn(() => ({
+        snapshot: vi.fn(() => mockSnapshot),
+        applyHumanAction,
+        resetHand: vi.fn(() => mockSnapshot),
+      })),
+    })
+
+    await runtime.handle({ id: 1, type: 'init', config: mockConfig })
+    const pending = runtime.handle({
+      id: 2,
+      type: 'applyHumanAction',
+      actionId: 'call',
+      forceActionDelayMs: 120,
+    })
+
+    await vi.advanceTimersByTimeAsync(100)
+    expect(applyHumanAction).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(20)
+    await expect(pending).resolves.toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
+    expect(applyHumanAction).toHaveBeenCalledWith('call')
+    vi.useRealTimers()
+  })
+
   it('surfaces wasm initialization failures as worker errors', async () => {
     const runtime = new PokerWorkerRuntime({
       initWasm: vi.fn(async () => {

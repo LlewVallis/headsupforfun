@@ -45,6 +45,7 @@ export class PokerWorkerRuntime {
           snapshot = asSnapshot(this.requireSession().snapshot())
           break
         case 'applyHumanAction':
+          await maybeDelay(message.forceActionDelayMs)
           snapshot = asSnapshot(
             this.requireSession().applyHumanAction(message.actionId),
           )
@@ -76,4 +77,12 @@ export class PokerWorkerRuntime {
 
 function asSnapshot(value: unknown): WebSessionSnapshot {
   return value as WebSessionSnapshot
+}
+
+async function maybeDelay(delayMs: number | null | undefined): Promise<void> {
+  if (!delayMs || delayMs <= 0) {
+    return
+  }
+
+  await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs))
 }

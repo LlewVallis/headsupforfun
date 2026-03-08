@@ -141,6 +141,29 @@ describe('PokerClient', () => {
     client.dispose()
   })
 
+  it('forwards a forced action delay override for the next human action', async () => {
+    ;(globalThis as typeof globalThis & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
+      180
+    const client = new PokerClient()
+    const worker = expectWorker()
+    const pending = client.applyHumanAction('call')
+
+    expect(worker.postedMessages[0]).toMatchObject({
+      id: 1,
+      type: 'applyHumanAction',
+      actionId: 'call',
+      forceActionDelayMs: 180,
+    })
+
+    worker.emitMessage({ id: 1, ok: true, snapshot: mockSnapshot })
+    await expect(pending).resolves.toEqual(mockSnapshot)
+    expect(
+      (globalThis as typeof globalThis & { __GTO_FORCE_ACTION_DELAY_MS__?: number })
+        .__GTO_FORCE_ACTION_DELAY_MS__,
+    ).toBeUndefined()
+    client.dispose()
+  })
+
   it('rejects requests when the worker replies with an initialization failure', async () => {
     const client = new PokerClient()
     const worker = expectWorker()

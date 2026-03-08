@@ -1,7 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { BOT_ACTION_REVEAL_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
 const baseSnapshot: WebSessionSnapshot = {
@@ -113,7 +112,7 @@ describe('App', () => {
     expect(await screen.findByLabelText('Poker table')).toBeInTheDocument()
     expect(screen.getByLabelText('Hero panel')).toHaveTextContent('You')
     expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Solver Bot')
-    expect(screen.getByLabelText('Action tray')).toHaveTextContent('hybrid play mode')
+    expect(screen.getByLabelText('Action tray')).not.toHaveTextContent('hybrid play mode')
     expect(screen.queryByText('Session activity')).not.toBeInTheDocument()
     expect(screen.queryByText('Seed')).not.toBeInTheDocument()
   })
@@ -158,7 +157,7 @@ describe('App', () => {
   })
 
   it(
-    'shows bot thinking and then reveals the bot action before returning control',
+    'keeps the bot action bubble visible until the player acts again',
     async () => {
       const user = userEvent.setup()
 
@@ -184,16 +183,26 @@ describe('App', () => {
       })
 
       expect(await screen.findByText('Raises to 4.0 BB')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Check' })).toBeDisabled()
+      const checkButton = screen.getByRole('button', { name: 'Check' })
+      expect(checkButton).not.toBeDisabled()
 
-      await act(async () => {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, BOT_ACTION_REVEAL_MS + 80),
-        )
-      })
+      let resolveFollowUp: ((value: WebSessionSnapshot) => void) | null = null
+      applyHumanActionMock.mockImplementationOnce(
+        () =>
+          new Promise<WebSessionSnapshot>((resolve) => {
+            resolveFollowUp = resolve
+          }),
+      )
+
+      await user.click(checkButton)
 
       expect(screen.queryByText('Raises to 4.0 BB')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Check' })).not.toBeDisabled()
+      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
+
+      await act(async () => {
+        resolveFollowUp?.(terminalSnapshot)
+        await Promise.resolve()
+      })
     },
     10_000,
   )

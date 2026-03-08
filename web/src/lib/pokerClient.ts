@@ -38,7 +38,11 @@ export class PokerClient {
   }
 
   async applyHumanAction(actionId: string): Promise<WebSessionSnapshot> {
-    return this.send({ type: 'applyHumanAction', actionId })
+    return this.send({
+      type: 'applyHumanAction',
+      actionId,
+      forceActionDelayMs: readForcedWorkerActionDelay(),
+    })
   }
 
   async resetHand(): Promise<WebSessionSnapshot> {
@@ -101,4 +105,25 @@ function readForcedWorkerInitError(): string | null {
   }
   delete host.__GTO_FORCE_WORKER_ERROR__
   return value
+}
+
+function readForcedWorkerActionDelay(): number | null {
+  const host = globalThis as typeof globalThis & {
+    __GTO_FORCE_ACTION_DELAY_MS__?: number | string
+  }
+  const value = host.__GTO_FORCE_ACTION_DELAY_MS__
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    delete host.__GTO_FORCE_ACTION_DELAY_MS__
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      delete host.__GTO_FORCE_ACTION_DELAY_MS__
+      return parsed
+    }
+  }
+
+  return null
 }

@@ -21,7 +21,7 @@ interface PokerCardProps extends HTMLAttributes<HTMLDivElement> {
 export function PokerCard(props: PokerCardProps) {
   const { card = null, hidden = false, tone = 'table', className, ...rest } = props
   const classes = joinClasses(
-    'card-shell relative overflow-hidden rounded-[1.1rem] shadow-[0_16px_40px_rgba(0,0,0,0.24)]',
+    'card-shell relative rounded-[1rem] p-[2px] shadow-[0_16px_40px_rgba(0,0,0,0.24)]',
     tone === 'hero' ? 'ring-2 ring-gold-300/45' : 'ring-1 ring-black/12',
     className,
   )
@@ -33,7 +33,7 @@ export function PokerCard(props: PokerCardProps) {
         <img
           src={src}
           alt="Face-down card"
-          className="h-full w-full object-cover"
+          className="h-full w-full rounded-[0.88rem] bg-white object-contain"
           draggable={false}
         />
       </div>
@@ -50,7 +50,9 @@ export function PokerCard(props: PokerCardProps) {
           'grid place-items-center border border-white/8 bg-black/18 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]',
         )}
       >
-        <span className="h-8 w-8 rounded-full border border-white/8 bg-white/4" />
+        <div className="grid h-full w-full place-items-center rounded-[0.88rem] border border-white/6 bg-black/10">
+          <span className="block h-8 w-8 rounded-full border border-white/8 bg-white/4" />
+        </div>
       </div>
     )
   }
@@ -76,7 +78,7 @@ export function PokerCard(props: PokerCardProps) {
       <img
         src={src}
         alt={hidden ? 'Face-down card' : describeCard(card)}
-        className="h-full w-full object-cover"
+        className="h-full w-full rounded-[0.88rem] bg-white object-contain"
         draggable={false}
       />
     </div>

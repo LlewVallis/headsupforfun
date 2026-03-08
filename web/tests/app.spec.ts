@@ -13,7 +13,7 @@ test('plays a complete browser hand and deals the next one', async ({ page }) =>
     page.getByRole('heading', { name: "Heads-Up Hold'em" }),
   ).toBeVisible()
   await expect(page.getByLabel('Poker table')).toBeVisible()
-  await expect(page.getByLabel('Action tray')).toContainText('hybrid play mode')
+  await expect(page.getByLabel('Action tray')).not.toContainText('hybrid play mode')
   await expect(page.getByLabel('Hero panel')).toContainText('You')
   await expect(page.getByLabel('Bot panel')).toContainText('Solver Bot')
   await expect(page.getByText('Hand 1')).toBeVisible()
@@ -55,8 +55,38 @@ test('keeps the player-facing app on the fixed hybrid-play experience', async ({
   await page.goto('/')
 
   await expect(page.getByText('Hybrid Play')).toHaveCount(0)
-  await expect(page.getByLabel('Action tray')).toContainText('hybrid play mode')
+  await expect(page.getByLabel('Action tray')).not.toContainText('hybrid play mode')
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible()
+})
+
+test('keeps the bot feedback bubble visible until the player acts again', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
+
+  await page.evaluate(() => {
+    ;(window as typeof window & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
+      220
+  })
+
+  const firstAction = page
+    .getByLabel('Action tray')
+    .getByRole('button', { name: /Call|Check/ })
+    .first()
+  await firstAction.click()
+
+  await expect(page.locator('.action-bubble')).toContainText('Thinking')
+  await expect(page.locator('.action-bubble')).toHaveCount(1)
+
+  await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
+  await expect(page.locator('.action-bubble')).toHaveCount(1)
+
+  const nextAction = page
+    .getByLabel('Action tray')
+    .getByRole('button', { name: /Call|Check|Fold|Raise/ })
+    .first()
+  await nextAction.click()
+
+  await expect(page.locator('.action-bubble')).toContainText('Thinking')
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {

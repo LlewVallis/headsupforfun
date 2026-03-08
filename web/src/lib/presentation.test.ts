@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { WebSessionSnapshot } from './pokerTypes'
 import {
-  BOT_ACTION_REVEAL_MS,
   actionPrompt,
   buildPlayerSessionConfig,
   defaultTestSeed,
@@ -117,6 +116,5 @@ describe('presentation helpers', () => {
       'Hand complete',
     )
     expect(actionPrompt(snapshot, true)).toBe('Solver Bot is thinking...')
-    expect(BOT_ACTION_REVEAL_MS).toBeGreaterThan(0)
   })
 })
