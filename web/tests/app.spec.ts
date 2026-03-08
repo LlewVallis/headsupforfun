@@ -1,36 +1,39 @@
 import { expect, test, type Page } from '@playwright/test'
 
-test('plays a complete seeded browser hand and deals the next one', async ({
-  page,
-}) => {
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as typeof window & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 7
+  })
+})
+
+test('plays a complete browser hand and deals the next one', async ({ page }) => {
   await page.goto('/')
 
   await expect(
-    page.getByRole('heading', { name: 'GTO Poker' }),
+    page.getByRole('heading', { name: "Heads-Up Hold'em" }),
   ).toBeVisible()
   await expect(page.getByLabel('Poker table')).toBeVisible()
-  await expect(page.getByLabel('Hand history')).toBeVisible()
-  await expect(page.getByLabel('Session activity')).toContainText('Seed 7')
-  await expect(page.getByLabel('Hand status')).toContainText(/Hand\s*1/)
+  await expect(page.getByLabel('Action tray')).toContainText('hybrid play mode')
+  await expect(page.getByLabel('Hero panel')).toContainText('You')
+  await expect(page.getByLabel('Bot panel')).toContainText('Solver Bot')
+  await expect(page.getByText('Hand 1')).toBeVisible()
+  await expect(page.getByText('Seed')).toHaveCount(0)
 
-  for (let step = 0; step < 16; step += 1) {
+  for (let step = 0; step < 32; step += 1) {
     if (!(await clickPreferredAction(page))) {
       break
     }
   }
 
-  await expect(page.getByLabel('Hand status')).toContainText('terminal')
-  await expect(
-    page.getByLabel('Available actions').getByText('This hand is complete.'),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Deal next hand' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Deal next hand' }).click()
 
-  await expect(page.getByLabel('Hand status')).toContainText(/Hand\s*2/)
-  await expect(page.getByLabel('Session activity')).toContainText('Ready')
+  await expect(page.getByText('Hand 2')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
 })
 
-test('shows a recoverable error when initialization fails', async ({ page }) => {
+test('shows a recoverable error when the table fails to initialize', async ({ page }) => {
   await page.goto('/')
 
   await page.evaluate(() => {
@@ -38,55 +41,48 @@ test('shows a recoverable error when initialization fails', async ({ page }) => 
       'forced initialization failure for e2e'
   })
 
-  await page.getByRole('button', { name: 'Restart session' }).click()
+  await page.getByRole('button', { name: 'New match' }).click()
 
-  await expect(page.getByRole('alert')).toContainText(
-    'forced initialization failure for e2e',
-  )
-  await page.getByRole('button', { name: 'Retry session' }).click()
+  await expect(page.getByRole('alert')).toContainText('forced initialization failure for e2e')
+  await page.getByRole('button', { name: 'Reload table' }).click()
 
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByLabel('Poker table')).toBeVisible()
-  await expect(page.getByLabel('Available actions')).toContainText(/Call|Check/)
+  await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
 })
 
-test('switches into Hybrid Play mode for production-style browser sessions', async ({
-  page,
-}) => {
+test('keeps the player-facing app on the fixed hybrid-play experience', async ({ page }) => {
   await page.goto('/')
 
-  await page.getByRole('button', { name: /Hybrid Play/i }).click()
-  await page.getByRole('button', { name: 'Restart session' }).click()
-
-  await expect(page.getByLabel('Session activity')).toContainText('Hybrid Play')
-  await expect(page.getByLabel('Hand status')).toContainText('Hybrid Play')
+  await expect(page.getByText('Hybrid Play')).toHaveCount(0)
+  await expect(page.getByLabel('Action tray')).toContainText('hybrid play mode')
+  await expect(page.getByRole('button', { name: 'New match' })).toBeVisible()
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {
-  const activity = page.getByLabel('Session activity')
-  const actions = page.getByLabel('Available actions')
-  await expect(activity).toContainText('Ready')
-  const completeMarker = actions.getByText('This hand is complete.')
-  if (await completeMarker.isVisible().catch(() => false)) {
-    return false
-  }
+  const actionTray = page.getByLabel('Action tray')
 
-  const labels = await actions.locator('button').evaluateAll((buttons) =>
-    buttons
-      .filter((button) => !(button as HTMLButtonElement).disabled)
-      .map((button) => button.textContent?.trim() ?? '')
-      .filter((value) => value.length > 0),
-  )
-
-  const label =
-    labels.find((value) => value === 'Check' || value === 'Call') ?? labels[0]
-  if (!label) {
-    if (await completeMarker.isVisible().catch(() => false)) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const nextHandButton = actionTray.getByRole('button', { name: 'Deal next hand' })
+    if (await nextHandButton.isVisible().catch(() => false)) {
       return false
     }
-    throw new Error('No enabled action buttons were available')
+
+    const labels = await actionTray.locator('button:not([disabled])').evaluateAll((buttons) =>
+      buttons
+        .map((button) => button.textContent?.trim() ?? '')
+        .filter((value) => value.length > 0),
+    )
+    const label =
+      labels.find((value) => value === 'Check' || value === 'Call') ?? labels[0]
+
+    if (label) {
+      await actionTray.getByRole('button', { name: label, exact: true }).click()
+      return true
+    }
+
+    await page.waitForTimeout(100)
   }
 
-  await actions.getByRole('button', { name: label, exact: true }).click()
-  return true
+  throw new Error('No enabled action buttons became available in time')
 }

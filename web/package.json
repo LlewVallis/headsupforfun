@@ -6,6 +6,7 @@
   "scripts": {
     "predev": "npm run wasm:build:dev",
     "dev": "vite",
+    "dev:no-wasm": "vite",
     "wasm:build:dev": "wasm-pack build ../crates/gto-web --target web --out-dir ../../web/src/generated/gto-web --dev",
     "wasm:build": "wasm-pack build ../crates/gto-web --target web --out-dir ../../web/src/generated/gto-web --release",
     "prebuild": "npm run wasm:build",
@@ -14,12 +15,14 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest:e2e": "npm run wasm:build:dev",
+    "pretest:e2e": "npm run wasm:build",
     "test:e2e": "playwright test",
+    "prescreenshots": "npm run wasm:build",
     "screenshots": "playwright test --config=playwright.screenshots.config.ts",
     "validate": "npm run test && npm run test:e2e && npm run build"
   },
   "dependencies": {
+    "@fontsource/outfit": "^5.2.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

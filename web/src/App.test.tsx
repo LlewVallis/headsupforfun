@@ -1,13 +1,14 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+import { BOT_ACTION_REVEAL_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
-const mockSnapshot: WebSessionSnapshot = {
+const baseSnapshot: WebSessionSnapshot = {
   handNumber: 1,
   humanSeat: 'button',
   botSeat: 'bigBlind',
-  botMode: 'hybridFast',
+  botMode: 'hybridPlay',
   street: 'preflop',
   phase: 'bettingRound',
   currentActor: 'button',
@@ -31,20 +32,47 @@ const mockSnapshot: WebSessionSnapshot = {
   },
   legalActions: [
     { id: 'call', label: 'Call' },
-    { id: 'raiseTo:250', label: 'Raise to 2.5 bb' },
+    { id: 'raiseTo:400', label: 'Raise to 4.0 bb' },
   ],
   history: ['button posts 0.5 bb', 'big-blind posts 1.0 bb'],
   status: 'Your turn on preflop.',
   terminalSummary: null,
 }
-const hybridPlaySnapshot: WebSessionSnapshot = {
-  ...mockSnapshot,
-  botMode: 'hybridPlay',
+
+const terminalSnapshot: WebSessionSnapshot = {
+  ...baseSnapshot,
+  currentActor: null,
+  legalActions: [],
+  terminalSummary: 'button wins at showdown for 6.5 bb',
+  history: [
+    ...baseSnapshot.history,
+    'preflop: button calls',
+    'preflop: big-blind checks',
+    'flop: As Kd 7h',
+    'turn: 2c',
+    'river: 2d',
+    'button wins at showdown for 6.5 bb',
+  ],
 }
 
-const initMock = vi.fn().mockResolvedValue(mockSnapshot)
-const resetHandMock = vi.fn().mockResolvedValue(mockSnapshot)
-const applyHumanActionMock = vi.fn().mockResolvedValue(mockSnapshot)
+const postActionSnapshot: WebSessionSnapshot = {
+  ...baseSnapshot,
+  street: 'flop',
+  pot: 800,
+  boardCards: ['Ah', '7d', '2c'],
+  history: [
+    ...baseSnapshot.history,
+    'preflop: button calls',
+    'preflop: big-blind raises to 4.0 bb',
+    'preflop: button calls',
+    'flop: Ah 7d 2c',
+  ],
+  legalActions: [{ id: 'check', label: 'Check' }],
+}
+
+const initMock = vi.fn().mockResolvedValue(baseSnapshot)
+const resetHandMock = vi.fn().mockResolvedValue(baseSnapshot)
+const applyHumanActionMock = vi.fn().mockResolvedValue(postActionSnapshot)
 const disposeMock = vi.fn()
 
 vi.mock('./lib/pokerClient', () => ({
@@ -56,107 +84,117 @@ vi.mock('./lib/pokerClient', () => ({
   },
 }))
 
-import App, { defaultBotMode } from './App'
+import App from './App'
 
 describe('App', () => {
   beforeEach(() => {
     vi.useRealTimers()
-    initMock.mockResolvedValue(mockSnapshot)
-    resetHandMock.mockResolvedValue(mockSnapshot)
-    applyHumanActionMock.mockResolvedValue(mockSnapshot)
+    initMock.mockReset()
+    initMock.mockResolvedValue(baseSnapshot)
+    resetHandMock.mockReset()
+    resetHandMock.mockResolvedValue(baseSnapshot)
+    applyHumanActionMock.mockReset()
+    applyHumanActionMock.mockResolvedValue(postActionSnapshot)
     disposeMock.mockClear()
-    initMock.mockClear()
-    resetHandMock.mockClear()
-    applyHumanActionMock.mockClear()
+    ;(globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 7
   })
 
-  it('renders the Rust-backed poker UI shell', async () => {
+  afterEach(() => {
+    delete (globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__
+  })
+
+  it('renders the game-first poker table shell', async () => {
     render(<App />)
 
     expect(
-      screen.getByRole('heading', { name: 'GTO Poker' }),
+      screen.getByRole('heading', { name: "Heads-Up Hold'em" }),
     ).toBeInTheDocument()
-    expect(await screen.findByText('Restart session')).toBeInTheDocument()
-    expect(await screen.findByText('Call')).toBeInTheDocument()
-    expect(screen.getByLabelText('Poker table')).toBeInTheDocument()
-    expect(screen.getByLabelText('Hand history')).toBeInTheDocument()
-    expect(screen.getByLabelText('Session activity')).toHaveTextContent('Ready')
+    expect(await screen.findByRole('button', { name: 'New match' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Poker table')).toBeInTheDocument()
+    expect(screen.getByLabelText('Hero panel')).toHaveTextContent('You')
+    expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Solver Bot')
+    expect(screen.getByLabelText('Action tray')).toHaveTextContent('hybrid play mode')
+    expect(screen.queryByText('Session activity')).not.toBeInTheDocument()
+    expect(screen.queryByText('Seed')).not.toBeInTheDocument()
   })
 
-  it('shows a recoverable worker error banner when initialization fails', async () => {
-    initMock.mockRejectedValueOnce(new Error('init failed'))
-
+  it('initializes the table with the fixed hybrid-play bot mode', async () => {
     render(<App />)
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('init failed')
-
-    const user = userEvent.setup()
-    initMock.mockResolvedValueOnce(mockSnapshot)
-    await user.click(screen.getByRole('button', { name: 'Retry session' }))
-
-    expect(await screen.findByText('Call')).toBeInTheDocument()
-  })
-
-  it('restarts sessions in the selected bot mode', async () => {
-    const user = userEvent.setup()
-
-    render(<App />)
-
-    await screen.findByText('Call')
-    initMock.mockClear()
-    initMock.mockResolvedValueOnce(hybridPlaySnapshot)
-
-    await user.click(screen.getByRole('button', { name: /Hybrid Play/i }))
-    await user.click(screen.getByRole('button', { name: 'Restart session' }))
+    await screen.findByRole('button', { name: 'Call' })
 
     expect(initMock).toHaveBeenCalledWith({
       seed: 7,
       humanSeat: 'button',
       botMode: 'hybridPlay',
     })
-    expect(await screen.findByLabelText('Hand status')).toHaveTextContent(
-      'Hybrid Play',
-    )
   })
 
-  it('offers a fallback to Hybrid Fast after a slow Hybrid Play worker round trip', async () => {
-    const user = userEvent.setup()
+  it('shows a recoverable table-reset banner when initialization fails', async () => {
+    initMock.mockRejectedValueOnce(new Error('init failed'))
+
     render(<App />)
 
-    await screen.findByText('Call')
-    initMock.mockResolvedValueOnce(hybridPlaySnapshot)
-    initMock.mockClear()
-    applyHumanActionMock.mockResolvedValueOnce(hybridPlaySnapshot)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Table reset needed')
+    expect(screen.getByRole('alert')).toHaveTextContent('init failed')
 
-    await user.click(screen.getByRole('button', { name: /Hybrid Play/i }))
-    await user.click(screen.getByRole('button', { name: 'Restart session' }))
-    await screen.findAllByText('Hybrid Play')
+    const user = userEvent.setup()
+    initMock.mockResolvedValueOnce(baseSnapshot)
+    await user.click(screen.getByRole('button', { name: 'Reload table' }))
 
-    let now = 0
-    const performanceSpy = vi.spyOn(performance, 'now').mockImplementation(() => {
-      now += 1_400
-      return now
-    })
-    const actionPromise = user.click(screen.getByRole('button', { name: 'Call' }))
-    await actionPromise
-
-    expect(await screen.findByLabelText('Performance fallback')).toHaveTextContent(
-      'Hybrid Play took',
-    )
-    performanceSpy.mockRestore()
-
-    initMock.mockResolvedValueOnce(mockSnapshot)
-    await user.click(screen.getByRole('button', { name: 'Switch to Hybrid Fast' }))
-
-    expect(initMock).toHaveBeenLastCalledWith({
-      seed: 7,
-      humanSeat: 'button',
-      botMode: 'hybridFast',
-    })
+    expect(await screen.findByRole('button', { name: 'Call' })).toBeInTheDocument()
   })
 
-  it('uses the stronger bot mode as the production default', () => {
-    expect(defaultBotMode(false)).toBe('hybridFast')
-    expect(defaultBotMode(true)).toBe('hybridPlay')
+  it('shows the next-hand action when the hand is complete', async () => {
+    initMock.mockResolvedValueOnce(terminalSnapshot)
+
+    render(<App />)
+
+    const user = userEvent.setup()
+    expect(await screen.findByRole('button', { name: 'Deal next hand' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Deal next hand' }))
+
+    expect(resetHandMock).toHaveBeenCalledTimes(1)
   })
+
+  it(
+    'shows bot thinking and then reveals the bot action before returning control',
+    async () => {
+      const user = userEvent.setup()
+
+      let resolveAction: ((value: WebSessionSnapshot) => void) | null = null
+      applyHumanActionMock.mockImplementation(
+        () =>
+          new Promise<WebSessionSnapshot>((resolve) => {
+            resolveAction = resolve
+          }),
+      )
+
+      render(<App />)
+      const callButton = await screen.findByRole('button', { name: 'Call' })
+
+      await user.click(callButton)
+
+      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
+      expect(callButton).toBeDisabled()
+
+      await act(async () => {
+        resolveAction?.(postActionSnapshot)
+        await Promise.resolve()
+      })
+
+      expect(await screen.findByText('Raises to 4.0 BB')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Check' })).toBeDisabled()
+
+      await act(async () => {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, BOT_ACTION_REVEAL_MS + 80),
+        )
+      })
+
+      expect(screen.queryByText('Raises to 4.0 BB')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Check' })).not.toBeDisabled()
+    },
+    10_000,
+  )
 })

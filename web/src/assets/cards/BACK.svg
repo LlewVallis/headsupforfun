@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 169 244" fill="none">
+  <rect width="169" height="244" rx="14" fill="#F7F2E6"/>
+  <rect x="8" y="8" width="153" height="228" rx="12" fill="#0C241C" stroke="#E7D39C" stroke-width="5"/>
+  <path d="M32 26L137 131" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <path d="M10 62L111 163" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <path d="M58 14L155 111" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <path d="M32 218L137 113" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <path d="M10 182L111 81" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <path d="M58 230L155 133" stroke="#1E5A43" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="84.5" cy="122" r="42" fill="#0A1A15" stroke="#E7D39C" stroke-width="6"/>
+  <circle cx="84.5" cy="122" r="28" fill="#124936" stroke="#E7D39C" stroke-width="3" stroke-dasharray="8 7"/>
+  <path d="M84.5 98C78.4 105.9 70 112.8 70 121.7C70 129.8 76.2 136.3 84.5 136.3C92.8 136.3 99 129.8 99 121.7C99 112.8 90.6 105.9 84.5 98Z" fill="#E7D39C"/>
+  <path d="M84.5 138L74.6 152.8H94.4L84.5 138Z" fill="#E7D39C"/>
+</svg>
