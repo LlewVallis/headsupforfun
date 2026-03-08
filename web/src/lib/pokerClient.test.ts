@@ -113,6 +113,18 @@ describe('PokerClient', () => {
 
   afterEach(() => {
     globalThis.Worker = originalWorker
+    delete (
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_TEST_SCENARIO__
+    delete (
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__
   })
 
   it('sends init requests and resolves snapshots from worker replies', async () => {
@@ -202,6 +214,47 @@ describe('PokerClient', () => {
     await expect(pending).rejects.toThrow(
       'Poker worker was disposed before replying',
     )
+  })
+
+  it('uses the deterministic browser scenario backend when requested', async () => {
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_TEST_SCENARIO__ = 'flopRevealThenAction'
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 1
+
+    const client = new PokerClient()
+    expect(FakeWorker.instances).toHaveLength(0)
+
+    const opening = await client.init({
+      seed: 7,
+      humanSeat: 'button',
+      botMode: 'hybridPlay',
+    })
+    expect(opening.street).toBe('preflop')
+    expect(opening.boardCards).toEqual([])
+
+    const afterHuman = await client.applyHumanAction('call')
+    expect(afterHuman.street).toBe('flop')
+    expect(afterHuman.boardCards).toEqual(['Jc', '4h', '8c'])
+    expect(afterHuman.currentActor).toBe('bigBlind')
+
+    const afterBot = await client.advanceBot()
+    expect(afterBot.currentActor).toBe('button')
+    expect(afterBot.legalActions.map((action) => action.label)).toContain('Call')
+
+    const terminal = await client.applyHumanAction('call')
+    expect(terminal.terminalSummary).toBe('button wins at showdown for 7.8 bb')
+    expect(terminal.bigBlind.holeCards).toEqual(['As', '7s'])
+
+    client.dispose()
   })
 })
 

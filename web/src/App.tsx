@@ -135,12 +135,6 @@ function App() {
         !afterHumanSnapshot.terminalSummary &&
         afterHumanSnapshot.currentActor === afterHumanSnapshot.botSeat
 
-      let thinkStartedAt = 0
-      if (botActsAfterHuman) {
-        setBotPresence({ state: 'thinking' })
-        thinkStartedAt = performance.now()
-      }
-
       await transitionSnapshot(snapshot, afterHumanSnapshot)
 
       if (afterHumanSnapshot.terminalSummary) {
@@ -153,6 +147,8 @@ function App() {
         return
       }
 
+      setBotPresence({ state: 'thinking' })
+      const thinkStartedAt = performance.now()
       await waitForNextPaint()
       const afterBotSnapshot = await client.advanceBot()
       await transitionSnapshot(afterHumanSnapshot, afterBotSnapshot)
@@ -401,7 +397,7 @@ function App() {
                       <PokerCard
                         key={`${card ?? 'empty'}-${index}`}
                         card={card}
-                        className="h-[94px] w-[68px] md:h-[118px] md:w-[84px]"
+                        className="aspect-[167.0869141/242.6669922] h-[94px] md:h-[118px]"
                       />
                     ))}
                   </div>
@@ -569,7 +565,7 @@ function PlayerSeat(props: {
             hidden={props.hiddenCards}
             tone={props.tone ?? 'table'}
             className={joinClasses(
-              'h-[108px] w-[76px] transition duration-200 md:h-[132px] md:w-[94px]',
+              'aspect-[167.0869141/242.6669922] h-[108px] transition duration-200 md:h-[132px]',
               props.align === 'bottom' && index === 0 ? 'rotate-[-4deg]' : '',
               props.align === 'bottom' && index === 1 ? 'rotate-[5deg]' : '',
               props.align === 'top' && index === 0 ? 'rotate-[3deg]' : '',

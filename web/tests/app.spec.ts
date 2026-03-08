@@ -61,24 +61,29 @@ test('keeps the player-facing app on the fixed hybrid-play experience', async ({
 })
 
 test('shows the flop while the bot thinks and then fades the action bubble', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_TEST_SCENARIO__ = 'flopRevealThenAction'
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 220
+  })
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'New match' })).toBeEnabled()
-  await page.evaluate(() => {
-    ;(window as typeof window & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 0
-  })
-  await page.evaluate(() => {
-    ;(window as typeof window & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
-      220
-  })
-  await page.getByRole('button', { name: 'New match' }).click()
-  await reachFlopWhileBotThinks(page)
+  await page.getByLabel('Action tray').getByRole('button', { name: 'Call', exact: true }).click()
 
-  await expect(page.locator('.action-bubble')).toContainText('Thinking')
-  await expect(page.locator('.action-bubble')).toHaveCount(1)
   await expect(
     page.getByLabel('Board cards').getByRole('img', { name: /of/i }),
-  ).toHaveCount(3)
+  ).toHaveCount(3, { timeout: 5_000 })
+  await expect(page.locator('.action-bubble')).toContainText('Thinking')
+  await expect(page.locator('.action-bubble')).toHaveCount(1)
 
   await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
   await expect(page.locator('.action-bubble')).toHaveCount(1)
@@ -115,24 +120,4 @@ async function clickPreferredAction(page: Page): Promise<boolean> {
   }
 
   throw new Error('No enabled action buttons became available in time')
-}
-
-async function reachFlopWhileBotThinks(page: Page): Promise<void> {
-  const boardCards = page.getByLabel('Board cards').getByRole('img', { name: /of/i })
-  const actionBubble = page.locator('.action-bubble')
-
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    if ((await boardCards.count()) === 3 && (await actionBubble.textContent())?.includes('Thinking')) {
-      return
-    }
-
-    if (await clickPreferredAction(page)) {
-      await page.waitForTimeout(50)
-      continue
-    }
-
-    await page.waitForTimeout(100)
-  }
-
-  throw new Error('Did not reach a flop-thinking state for the browser smoke test')
 }

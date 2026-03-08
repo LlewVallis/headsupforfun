@@ -182,7 +182,7 @@ describe('App', () => {
   })
 
   it(
-    'reveals the flop one card at a time while the bot is thinking',
+    'reveals the flop one card at a time before the bot starts thinking',
     async () => {
       const user = userEvent.setup()
 
@@ -216,20 +216,23 @@ describe('App', () => {
       const countVisibleBoardCards = () =>
         within(screen.getByLabelText('Board cards')).queryAllByRole('img', { name: /of/i }).length
 
-      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
+      expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
       expect(screen.getByText('Watch the bot respond')).toBeInTheDocument()
       await waitFor(
         () => expect(countVisibleBoardCards()).toBe(1),
         { timeout: BOARD_REVEAL_STEP_MS + 500 },
       )
+      expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
       await waitFor(
         () => expect(countVisibleBoardCards()).toBe(2),
         { timeout: (BOARD_REVEAL_STEP_MS * 2) + 500 },
       )
+      expect(screen.getByLabelText('Bot panel')).not.toHaveTextContent('Thinking')
       await waitFor(
         () => expect(countVisibleBoardCards()).toBe(3),
         { timeout: (BOARD_REVEAL_STEP_MS * 3) + 500 },
       )
+      await waitFor(() => expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking'))
       await waitFor(() => expect(advanceBotMock).toHaveBeenCalledTimes(1))
 
       await act(async () => {
