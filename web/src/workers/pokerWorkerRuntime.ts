@@ -28,6 +28,10 @@ export class PokerWorkerRuntime {
 
   async handle(message: PokerWorkerRequest): Promise<PokerWorkerResponse> {
     try {
+      if (message.type === 'init' && message.forceInitError) {
+        throw new Error(message.forceInitError)
+      }
+
       await this.wasmReady
 
       let snapshot: WebSessionSnapshot

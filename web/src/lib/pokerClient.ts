@@ -17,13 +17,20 @@ export class PokerClient {
   private nextId = 1
 
   constructor() {
-    this.worker = new Worker(createWorkerUrl(), { type: 'module' })
+    this.worker = new Worker(
+      new URL('../workers/pokerWorker.ts', import.meta.url),
+      { type: 'module' },
+    )
     this.worker.addEventListener('message', this.handleMessage)
     this.worker.addEventListener('error', this.handleWorkerError)
   }
 
   async init(config: WebSessionConfig): Promise<WebSessionSnapshot> {
-    return this.send({ type: 'init', config })
+    return this.send({
+      type: 'init',
+      config,
+      forceInitError: readForcedWorkerInitError(),
+    })
   }
 
   async snapshot(): Promise<WebSessionSnapshot> {
@@ -82,15 +89,6 @@ export class PokerClient {
     }
     this.pending.clear()
   }
-}
-
-function createWorkerUrl(): URL {
-  const workerUrl = new URL('../workers/pokerWorker.ts', import.meta.url)
-  const forcedInitError = readForcedWorkerInitError()
-  if (forcedInitError) {
-    workerUrl.searchParams.set('forceInitError', forcedInitError)
-  }
-  return workerUrl
 }
 
 function readForcedWorkerInitError(): string | null {

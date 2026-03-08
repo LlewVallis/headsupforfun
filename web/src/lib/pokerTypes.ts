@@ -41,13 +41,18 @@ export interface WebSessionSnapshot {
 }
 
 export type PokerWorkerCommand =
-  | { type: 'init'; config: WebSessionConfig }
+  | { type: 'init'; config: WebSessionConfig; forceInitError?: string | null }
   | { type: 'snapshot' }
   | { type: 'applyHumanAction'; actionId: string }
   | { type: 'resetHand' }
 
 export type PokerWorkerRequest =
-  | { id: number; type: 'init'; config: WebSessionConfig }
+  | {
+      id: number
+      type: 'init'
+      config: WebSessionConfig
+      forceInitError?: string | null
+    }
   | { id: number; type: 'snapshot' }
   | { id: number; type: 'applyHumanAction'; actionId: string }
   | { id: number; type: 'resetHand' }
