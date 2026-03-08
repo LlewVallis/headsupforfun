@@ -346,7 +346,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,76,58,0.22),transparent_22%),radial-gradient(circle_at_50%_120%,rgba(160,118,50,0.08),transparent_32%),linear-gradient(180deg,#020605_0%,#040907_38%,#010302_100%)] px-3 pb-10 pt-4 text-ivory-100 md:px-5 lg:px-6">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_18%_10%,rgba(36,105,76,0.18),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(25,74,54,0.14),transparent_20%),radial-gradient(circle_at_50%_120%,rgba(160,118,50,0.08),transparent_32%),linear-gradient(180deg,#020605_0%,#05100c_34%,#020705_68%,#010302_100%)] px-3 pb-10 pt-4 text-ivory-100 md:px-5 lg:px-6">
       <div className="mx-auto flex w-full max-w-[1140px] flex-col gap-4">
         <header className="relative overflow-hidden rounded-[1.4rem] border border-[#e8d8b6]/8 bg-[#07100d]/88 px-4 py-3 shadow-[0_20px_80px_rgba(0,0,0,0.5)] md:px-5">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(231,199,115,0.05),transparent_24%,transparent_76%,rgba(231,199,115,0.04)),radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.05),transparent_24%)]" />
