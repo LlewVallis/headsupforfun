@@ -104,6 +104,7 @@ pub struct PreflopContextKey {
     pub actor: Player,
     pub prior_limp: bool,
     pub aggressive_actions: u8,
+    pub effective_stack_bucket: EffectiveStackBucket,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -119,6 +120,16 @@ pub struct PreflopPolicyEntry {
     pub context: PreflopContextKey,
     pub default_action: BlueprintActionKind,
     pub rules: Vec<PreflopRangeRule>,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EffectiveStackBucket {
+    UpTo15Bb,
+    Bb16To25,
+    Bb26To40,
+    Bb41To75,
+    Bb76Plus,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -178,7 +189,7 @@ pub struct FullHandBlueprintArtifact {
 }
 
 impl FullHandBlueprintArtifact {
-    pub const FORMAT_VERSION: u32 = 1;
+    pub const FORMAT_VERSION: u32 = 2;
 
     pub fn smoke_default() -> Self {
         let starting_ranges = StartingRanges::smoke_default();
@@ -403,6 +414,7 @@ pub fn smoke_blueprint_profile() -> AbstractionProfile {
         opening_sizes: vec![
             OpeningSize::BigBlindMultipleBps(25_000),
             OpeningSize::BigBlindMultipleBps(40_000),
+            OpeningSize::BigBlindMultipleBps(70_000),
         ],
         raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
         include_all_in: true,
@@ -410,6 +422,7 @@ pub fn smoke_blueprint_profile() -> AbstractionProfile {
     let postflop = StreetProfile {
         opening_sizes: vec![
             OpeningSize::PotFractionBps(3_300),
+            OpeningSize::PotFractionBps(6_600),
             OpeningSize::PotFractionBps(10_000),
         ],
         raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
@@ -438,25 +451,92 @@ pub fn preflop_context_from_state(
         actor,
         prior_limp,
         aggressive_actions,
+        effective_stack_bucket: effective_stack_bucket_from_state(state),
     })
 }
 fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
+    let mut entries = Vec::new();
+    for bucket in [
+        EffectiveStackBucket::UpTo15Bb,
+        EffectiveStackBucket::Bb16To25,
+        EffectiveStackBucket::Bb26To40,
+        EffectiveStackBucket::Bb41To75,
+        EffectiveStackBucket::Bb76Plus,
+    ] {
+        entries.extend(default_preflop_policies_for_bucket(bucket));
+    }
+    entries
+}
+
+fn default_preflop_policies_for_bucket(
+    bucket: EffectiveStackBucket,
+) -> Vec<PreflopPolicyEntry> {
+    let button_open_large = match bucket {
+        EffectiveStackBucket::UpTo15Bb => BlueprintActionKind::AllIn,
+        EffectiveStackBucket::Bb16To25 | EffectiveStackBucket::Bb26To40 => {
+            BlueprintActionKind::Aggression3
+        }
+        EffectiveStackBucket::Bb41To75 | EffectiveStackBucket::Bb76Plus => {
+            BlueprintActionKind::Aggression2
+        }
+    };
+    let button_open_small = match bucket {
+        EffectiveStackBucket::UpTo15Bb => BlueprintActionKind::AllIn,
+        EffectiveStackBucket::Bb16To25 => BlueprintActionKind::Aggression2,
+        EffectiveStackBucket::Bb26To40
+        | EffectiveStackBucket::Bb41To75
+        | EffectiveStackBucket::Bb76Plus => BlueprintActionKind::Aggression1,
+    };
+    let big_blind_iso = match bucket {
+        EffectiveStackBucket::UpTo15Bb => BlueprintActionKind::AllIn,
+        EffectiveStackBucket::Bb16To25 => BlueprintActionKind::Aggression2,
+        EffectiveStackBucket::Bb26To40
+        | EffectiveStackBucket::Bb41To75
+        | EffectiveStackBucket::Bb76Plus => BlueprintActionKind::Aggression1,
+    };
+    let big_blind_three_bet = match bucket {
+        EffectiveStackBucket::UpTo15Bb | EffectiveStackBucket::Bb16To25 => {
+            BlueprintActionKind::AllIn
+        }
+        EffectiveStackBucket::Bb26To40 => BlueprintActionKind::Aggression2,
+        EffectiveStackBucket::Bb41To75 | EffectiveStackBucket::Bb76Plus => {
+            BlueprintActionKind::Aggression1
+        }
+    };
+    let button_raise_vs_iso = match bucket {
+        EffectiveStackBucket::UpTo15Bb | EffectiveStackBucket::Bb16To25 => {
+            BlueprintActionKind::AllIn
+        }
+        EffectiveStackBucket::Bb26To40
+        | EffectiveStackBucket::Bb41To75
+        | EffectiveStackBucket::Bb76Plus => BlueprintActionKind::Aggression1,
+    };
+    let button_four_bet = match bucket {
+        EffectiveStackBucket::UpTo15Bb
+        | EffectiveStackBucket::Bb16To25
+        | EffectiveStackBucket::Bb26To40 => BlueprintActionKind::AllIn,
+        EffectiveStackBucket::Bb41To75 | EffectiveStackBucket::Bb76Plus => {
+            BlueprintActionKind::Aggression1
+        }
+    };
+
     vec![
         PreflopPolicyEntry {
             context: PreflopContextKey {
                 actor: Player::Button,
                 prior_limp: false,
                 aggressive_actions: 0,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonOpenRaiseLarge,
-                    action: BlueprintActionKind::Aggression2,
+                    action: button_open_large,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonOpenRaiseSmall,
-                    action: BlueprintActionKind::Aggression1,
+                    action: button_open_small,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonOpenLimp,
@@ -469,11 +549,12 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::BigBlind,
                 prior_limp: true,
                 aggressive_actions: 0,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Check,
             rules: vec![PreflopRangeRule {
                 range: StartingRangeName::BigBlindIsoRaiseVsLimp,
-                action: BlueprintActionKind::Aggression1,
+                action: big_blind_iso,
             }],
         },
         PreflopPolicyEntry {
@@ -481,12 +562,13 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::BigBlind,
                 prior_limp: false,
                 aggressive_actions: 1,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![
                 PreflopRangeRule {
                     range: StartingRangeName::BigBlindThreeBetVsOpen,
-                    action: BlueprintActionKind::Aggression1,
+                    action: big_blind_three_bet,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::BigBlindDefendVsOpen,
@@ -499,12 +581,13 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::Button,
                 prior_limp: true,
                 aggressive_actions: 1,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonRaiseVsIso,
-                    action: BlueprintActionKind::Aggression1,
+                    action: button_raise_vs_iso,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonContinueVsIso,
@@ -517,12 +600,13 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::Button,
                 prior_limp: false,
                 aggressive_actions: 2,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonFourBetVsThreeBet,
-                    action: BlueprintActionKind::Aggression1,
+                    action: button_four_bet,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonContinueVsThreeBet,
@@ -535,6 +619,7 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::BigBlind,
                 prior_limp: false,
                 aggressive_actions: 3,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![
@@ -553,6 +638,7 @@ fn default_preflop_policies() -> Vec<PreflopPolicyEntry> {
                 actor: Player::Button,
                 prior_limp: false,
                 aggressive_actions: 4,
+                effective_stack_bucket: bucket,
             },
             default_action: BlueprintActionKind::Fold,
             rules: vec![PreflopRangeRule {
@@ -611,18 +697,18 @@ fn default_postflop_policies() -> Vec<PostflopPolicyEntry> {
 }
 
 fn default_postflop_action_mix(key: PostflopPolicyKey) -> Vec<BlueprintActionProbability> {
-    use BlueprintActionKind::{Aggression1, Aggression2, AllIn, Call, Check, Fold};
+    use BlueprintActionKind::{Aggression1, Aggression2, Aggression3, AllIn, Call, Check, Fold};
     use DrawBucket::{Combo, Flush, None, Straight};
     use MadeHandBucket::{Air, Medium, Monster, Strong, Weak};
     use StackPressureBucket::{High, Low};
 
     let actions = if key.facing_bet {
         match (key.made_hand, key.draw, key.stack_pressure) {
-            (Monster, _, Low) => vec![(AllIn, 0.70), (Aggression1, 0.20), (Call, 0.10)],
-            (Monster, _, _) => vec![(Aggression1, 0.60), (Call, 0.25), (AllIn, 0.15)],
+            (Monster, _, Low) => vec![(AllIn, 0.65), (Aggression2, 0.20), (Call, 0.15)],
+            (Monster, _, _) => vec![(Aggression2, 0.45), (Aggression1, 0.25), (Call, 0.20), (AllIn, 0.10)],
             (Strong, _, Low) => vec![(Call, 0.55), (AllIn, 0.30), (Aggression1, 0.15)],
-            (Strong, _, _) => vec![(Call, 0.55), (Aggression1, 0.30), (Fold, 0.15)],
-            (Medium, Combo | Flush, _) => vec![(Call, 0.60), (Aggression1, 0.20), (Fold, 0.20)],
+            (Strong, _, _) => vec![(Call, 0.50), (Aggression1, 0.30), (Aggression2, 0.10), (Fold, 0.10)],
+            (Medium, Combo | Flush, _) => vec![(Call, 0.55), (Aggression1, 0.20), (Aggression2, 0.05), (Fold, 0.20)],
             (Medium, _, _) => vec![(Call, 0.70), (Fold, 0.30)],
             (Weak, Combo, _) => vec![(Call, 0.50), (Aggression1, 0.20), (Fold, 0.30)],
             (Weak, Flush | Straight, High) => vec![(Call, 0.45), (Aggression1, 0.15), (Fold, 0.40)],
@@ -634,11 +720,11 @@ fn default_postflop_action_mix(key: PostflopPolicyKey) -> Vec<BlueprintActionPro
         }
     } else {
         match (key.made_hand, key.draw, key.stack_pressure, key.street) {
-            (Monster, _, Low, _) => vec![(AllIn, 0.55), (Aggression2, 0.30), (Check, 0.15)],
-            (Monster, _, _, _) => vec![(Aggression2, 0.50), (Aggression1, 0.35), (Check, 0.15)],
-            (Strong, _, _, Street::River) => vec![(Aggression2, 0.45), (Aggression1, 0.35), (Check, 0.20)],
-            (Strong, _, _, _) => vec![(Aggression1, 0.50), (Aggression2, 0.20), (Check, 0.30)],
-            (Medium, Combo | Flush, _, _) => vec![(Aggression1, 0.35), (Check, 0.65)],
+            (Monster, _, Low, _) => vec![(AllIn, 0.50), (Aggression3, 0.20), (Aggression2, 0.20), (Check, 0.10)],
+            (Monster, _, _, _) => vec![(Aggression3, 0.35), (Aggression2, 0.30), (Aggression1, 0.20), (Check, 0.15)],
+            (Strong, _, _, Street::River) => vec![(Aggression3, 0.20), (Aggression2, 0.30), (Aggression1, 0.25), (Check, 0.25)],
+            (Strong, _, _, _) => vec![(Aggression2, 0.30), (Aggression1, 0.35), (Check, 0.35)],
+            (Medium, Combo | Flush, _, _) => vec![(Aggression1, 0.30), (Aggression2, 0.10), (Check, 0.60)],
             (Medium, _, _, Street::River) => vec![(Check, 0.65), (Aggression1, 0.35)],
             (Medium, _, _, _) => vec![(Check, 0.75), (Aggression1, 0.25)],
             (Weak, Combo, _, _) => vec![(Aggression1, 0.30), (Check, 0.70)],
@@ -707,6 +793,25 @@ fn classify_stack_pressure(state: &HoldemHandState, actor: Player) -> StackPress
         StackPressureBucket::Medium
     } else {
         StackPressureBucket::High
+    }
+}
+
+fn effective_stack_bucket_from_state(state: &HoldemHandState) -> EffectiveStackBucket {
+    let effective_stack = state
+        .starting_stack(Player::Button)
+        .min(state.starting_stack(Player::BigBlind));
+    let big_blinds = effective_stack as f64 / state.config().big_blind as f64;
+
+    if big_blinds <= 15.0 {
+        EffectiveStackBucket::UpTo15Bb
+    } else if big_blinds <= 25.0 {
+        EffectiveStackBucket::Bb16To25
+    } else if big_blinds <= 40.0 {
+        EffectiveStackBucket::Bb26To40
+    } else if big_blinds <= 75.0 {
+        EffectiveStackBucket::Bb41To75
+    } else {
+        EffectiveStackBucket::Bb76Plus
     }
 }
 
@@ -944,9 +1049,10 @@ mod tests {
 
     use super::{
         BlueprintActionKind, BlueprintActionProbability, BlueprintBot, DrawBucket,
-        FullHandBlueprintArtifact, MadeHandBucket, PreflopContextKey, choose_policy_action,
-        classify_draw_bucket, classify_made_hand, postflop_policy_key, preflop_context_from_state,
-        resolve_action_kind, smoke_blueprint_profile,
+        EffectiveStackBucket, FullHandBlueprintArtifact, MadeHandBucket, PreflopContextKey,
+        StartingRanges, choose_policy_action, classify_draw_bucket, classify_made_hand,
+        postflop_policy_key, preflop_context_from_state, resolve_action_kind,
+        smoke_blueprint_profile,
     };
     use crate::abstract_actions;
 
@@ -993,6 +1099,7 @@ mod tests {
                 actor: Player::BigBlind,
                 prior_limp: true,
                 aggressive_actions: 0,
+                effective_stack_bucket: EffectiveStackBucket::Bb76Plus,
             }
         );
     }
@@ -1102,6 +1209,48 @@ mod tests {
         let key = postflop_policy_key(Player::BigBlind, &state).unwrap();
         assert_eq!(key.aggressive_actions, 3);
         assert!(BlueprintBot::default().artifact().postflop_policy(key).is_some());
+    }
+
+    #[test]
+    fn effective_stack_buckets_cover_multiple_depth_bands() {
+        let cases = [
+            (1_500, EffectiveStackBucket::UpTo15Bb),
+            (2_500, EffectiveStackBucket::Bb16To25),
+            (4_000, EffectiveStackBucket::Bb26To40),
+            (7_500, EffectiveStackBucket::Bb41To75),
+            (10_000, EffectiveStackBucket::Bb76Plus),
+        ];
+
+        for (stack, bucket) in cases {
+            let state = HoldemHandState::new_with_starting_stacks(
+                HoldemConfig::default(),
+                "AsKd".parse().unwrap(),
+                "QcJh".parse().unwrap(),
+                stack,
+                stack,
+            )
+            .unwrap();
+            let context = preflop_context_from_state(&state).unwrap();
+            assert_eq!(context.effective_stack_bucket, bucket);
+        }
+    }
+
+    #[test]
+    fn stack_aware_artifact_rejects_older_fixed_stack_payloads() {
+        let legacy_json = serde_json::json!({
+            "format_version": 1,
+            "profile": smoke_blueprint_profile(),
+            "starting_ranges": StartingRanges::smoke_default(),
+            "preflop_policies": [],
+            "postflop_policies": [],
+        })
+        .to_string();
+
+        let error = FullHandBlueprintArtifact::from_json_str(&legacy_json).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unsupported blueprint artifact format version 1; expected 2"
+        );
     }
 
     #[test]

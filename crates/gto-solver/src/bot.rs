@@ -23,17 +23,25 @@ pub struct PostflopSolverBotConfig {
 impl PostflopSolverBotConfig {
     pub fn smoke_default() -> Self {
         let postflop = crate::StreetProfile {
-            opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
-            raise_sizes: vec![],
-            include_all_in: false,
+            opening_sizes: vec![
+                OpeningSize::PotFractionBps(3_300),
+                OpeningSize::PotFractionBps(6_600),
+                OpeningSize::PotFractionBps(10_000),
+            ],
+            raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
+            include_all_in: true,
         };
 
         Self {
             profile: AbstractionProfile::new(
                 crate::StreetProfile {
-                    opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
+                    opening_sizes: vec![
+                        OpeningSize::BigBlindMultipleBps(25_000),
+                        OpeningSize::BigBlindMultipleBps(40_000),
+                        OpeningSize::BigBlindMultipleBps(70_000),
+                    ],
                     raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
-                    include_all_in: false,
+                    include_all_in: true,
                 },
                 postflop.clone(),
                 postflop.clone(),
@@ -79,10 +87,10 @@ impl PostflopSolverBotConfig {
                             postflop.clone(),
                             postflop,
                         ),
-                        2,
                         1,
-                        2,
-                        8,
+                        1,
+                        1,
+                        4,
                     )
                 }
             };
@@ -409,6 +417,8 @@ fn scripted_flop_spot_from_state(
 
     Ok(ScriptedFlopSpot {
         config: state.config(),
+        button_starting_stack: Some(state.starting_stack(Player::Button)),
+        big_blind_starting_stack: Some(state.starting_stack(Player::BigBlind)),
         preflop_actions: actions_for_street(state, Street::Preflop),
         flop: [board[0], board[1], board[2]],
         flop_prefix_actions: actions_for_street(state, Street::Flop),
@@ -425,6 +435,8 @@ fn scripted_turn_spot_from_state(
 
     Ok(ScriptedTurnSpot {
         config: state.config(),
+        button_starting_stack: Some(state.starting_stack(Player::Button)),
+        big_blind_starting_stack: Some(state.starting_stack(Player::BigBlind)),
         preflop_actions: actions_for_street(state, Street::Preflop),
         flop: [board[0], board[1], board[2]],
         flop_actions: actions_for_street(state, Street::Flop),
@@ -443,6 +455,8 @@ fn scripted_river_spot_from_state(
 
     Ok(ScriptedRiverSpot {
         config: state.config(),
+        button_starting_stack: Some(state.starting_stack(Player::Button)),
+        big_blind_starting_stack: Some(state.starting_stack(Player::BigBlind)),
         preflop_actions: actions_for_street(state, Street::Preflop),
         flop: [board[0], board[1], board[2]],
         flop_actions: actions_for_street(state, Street::Flop),
@@ -554,6 +568,27 @@ mod tests {
         let river_spot = scripted_river_spot_from_state(&state).unwrap();
         assert_eq!(river_spot.turn_actions, vec![PlayerAction::Check, PlayerAction::Check]);
         assert!(river_spot.river_prefix_actions.is_empty());
+    }
+
+    #[test]
+    fn scripted_spot_builders_preserve_unequal_starting_stacks() {
+        let mut state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+            4_000,
+            10_000,
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let flop_spot = scripted_flop_spot_from_state(&state).unwrap();
+        assert_eq!(flop_spot.button_starting_stack, Some(4_000));
+        assert_eq!(flop_spot.big_blind_starting_stack, Some(10_000));
     }
 
     #[test]

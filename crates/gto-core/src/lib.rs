@@ -5,6 +5,7 @@ mod cards;
 mod deck;
 mod hand_eval;
 mod holdem;
+mod matchplay;
 mod range;
 mod rng;
 
@@ -21,6 +22,10 @@ pub use holdem::{
     Chips, HandOutcome, HandPhase, HistoryEvent, HoldemConfig, HoldemConfigError,
     HoldemHandState, HoldemStateError, LegalActions, Player, PlayerAction, PlayerSnapshot,
     Street, WagerRange,
+};
+pub use matchplay::{
+    HeadsUpMatchState, MatchConfig, MatchConfigError, MatchPlayer, MatchSeating, MatchSnapshot,
+    MatchStateError,
 };
 pub use range::{ParseRangeError, Range};
 pub use rng::{DEFAULT_RNG_SEED, DeterministicRng, default_rng, rng_from_seed};

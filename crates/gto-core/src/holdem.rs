@@ -261,9 +261,18 @@ pub enum HandOutcome {
     },
 }
 
+impl HandOutcome {
+    pub const fn payout(self) -> HeadsUpPayout {
+        match self {
+            Self::Uncontested { payout, .. } | Self::Showdown { payout, .. } => payout,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HoldemHandState {
     config: HoldemConfig,
+    starting_stacks: [Chips; 2],
     players: [InternalPlayerState; 2],
     board: Board,
     street: Street,
@@ -281,20 +290,38 @@ impl HoldemHandState {
         button_hole_cards: HoleCards,
         big_blind_hole_cards: HoleCards,
     ) -> Result<Self, HoldemStateError> {
+        Self::new_with_starting_stacks(
+            config,
+            button_hole_cards,
+            big_blind_hole_cards,
+            config.starting_stack,
+            config.starting_stack,
+        )
+    }
+
+    pub fn new_with_starting_stacks(
+        config: HoldemConfig,
+        button_hole_cards: HoleCards,
+        big_blind_hole_cards: HoleCards,
+        button_starting_stack: Chips,
+        big_blind_starting_stack: Chips,
+    ) -> Result<Self, HoldemStateError> {
         config.validate()?;
         validate_unique_hole_cards(button_hole_cards, big_blind_hole_cards)?;
 
         let mut players = [
-            InternalPlayerState::new(button_hole_cards, config.starting_stack),
-            InternalPlayerState::new(big_blind_hole_cards, config.starting_stack),
+            InternalPlayerState::new(button_hole_cards, button_starting_stack),
+            InternalPlayerState::new(big_blind_hole_cards, big_blind_starting_stack),
         ];
         let mut history = Vec::with_capacity(4);
 
-        post_blind(&mut players, &mut history, Player::Button, config.small_blind);
-        post_blind(&mut players, &mut history, Player::BigBlind, config.big_blind);
+        let button_blind = post_blind(&mut players, &mut history, Player::Button, config.small_blind);
+        let big_blind = post_blind(&mut players, &mut history, Player::BigBlind, config.big_blind);
+        let current_bet = button_blind.max(big_blind);
 
         Ok(Self {
             config,
+            starting_stacks: [button_starting_stack, big_blind_starting_stack],
             players,
             board: Board::new(),
             street: Street::Preflop,
@@ -302,8 +329,8 @@ impl HoldemHandState {
                 street: Street::Preflop,
                 actor: Player::Button,
             },
-            current_bet: config.big_blind,
-            last_full_raise_size: config.big_blind,
+            current_bet,
+            last_full_raise_size: current_bet,
             checks_in_round: 0,
             raise_reopened: [true, true],
             history,
@@ -360,6 +387,10 @@ impl HoldemHandState {
             street_contribution: state.street_contribution,
             folded: state.folded,
         }
+    }
+
+    pub const fn starting_stack(&self, player: Player) -> Chips {
+        self.starting_stacks[player.index()]
     }
 
     pub fn legal_actions(&self) -> Result<LegalActions, HoldemStateError> {
@@ -745,20 +776,24 @@ impl HoldemHandState {
     }
 
     fn big_blind_option_pending(&self) -> bool {
+        let big_blind = self.player_state(Player::BigBlind);
         self.street == Street::Preflop
             && self.current_actor() == Some(Player::BigBlind)
-            && self.current_bet == self.config.big_blind
-            && self.player_state(Player::Button).street_contribution == self.config.big_blind
-            && self.player_state(Player::BigBlind).street_contribution == self.config.big_blind
+            && big_blind.stack > 0
+            && self.current_bet == big_blind.street_contribution
+            && self.current_bet >= self.config.big_blind
+            && self.player_state(Player::Button).street_contribution == self.current_bet
             && self.preflop_action_count() == 1
     }
 
     fn opens_big_blind_option(&self, actor: Player) -> bool {
+        let big_blind = self.player_state(Player::BigBlind);
         actor == Player::Button
             && self.street == Street::Preflop
-            && self.current_bet == self.config.big_blind
+            && big_blind.stack > 0
+            && self.current_bet == big_blind.street_contribution
+            && self.current_bet >= self.config.big_blind
             && self.player_state(Player::Button).street_contribution == self.config.small_blind
-            && self.player_state(Player::BigBlind).street_contribution == self.config.big_blind
             && self.preflop_action_count() == 0
     }
 
@@ -900,12 +935,17 @@ fn post_blind(
     history: &mut Vec<HistoryEvent>,
     player: Player,
     amount: Chips,
-) {
+) -> Chips {
     let state = &mut players[player.index()];
-    state.stack -= amount;
-    state.street_contribution += amount;
-    state.total_contribution += amount;
-    history.push(HistoryEvent::BlindPosted { player, amount });
+    let posted = state.stack.min(amount);
+    state.stack -= posted;
+    state.street_contribution += posted;
+    state.total_contribution += posted;
+    history.push(HistoryEvent::BlindPosted {
+        player,
+        amount: posted,
+    });
+    posted
 }
 
 fn effective_max_total(actor: &InternalPlayerState, opponent: &InternalPlayerState) -> Chips {
@@ -1450,18 +1490,17 @@ mod tests {
     }
 
     fn assert_state_invariants(state: &HoldemHandState) {
-        let config = state.config();
         let button = state.player(Player::Button);
         let big_blind = state.player(Player::BigBlind);
 
         assert_eq!(
             button.stack + button.total_contribution,
-            config.starting_stack,
+            state.starting_stack(Player::Button),
             "button stack conservation failed"
         );
         assert_eq!(
             big_blind.stack + big_blind.total_contribution,
-            config.starting_stack,
+            state.starting_stack(Player::BigBlind),
             "big blind stack conservation failed"
         );
         assert_eq!(

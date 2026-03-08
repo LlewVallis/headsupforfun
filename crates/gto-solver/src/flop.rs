@@ -17,6 +17,10 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptedFlopSpot {
     pub config: HoldemConfig,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub button_starting_stack: Option<gto_core::Chips>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub big_blind_starting_stack: Option<gto_core::Chips>,
     pub preflop_actions: Vec<PlayerAction>,
     pub flop: [Card; 3],
     pub flop_prefix_actions: Vec<PlayerAction>,
@@ -28,8 +32,15 @@ impl ScriptedFlopSpot {
         button_hole_cards: HoleCards,
         big_blind_hole_cards: HoleCards,
     ) -> Result<HoldemHandState, FlopSolveError> {
-        let mut state = HoldemHandState::new(self.config, button_hole_cards, big_blind_hole_cards)
-            .map_err(FlopSolveError::State)?;
+        let mut state = HoldemHandState::new_with_starting_stacks(
+            self.config,
+            button_hole_cards,
+            big_blind_hole_cards,
+            self.button_starting_stack.unwrap_or(self.config.starting_stack),
+            self.big_blind_starting_stack
+                .unwrap_or(self.config.starting_stack),
+        )
+        .map_err(FlopSolveError::State)?;
 
         for action in &self.preflop_actions {
             state.apply_action(*action).map_err(FlopSolveError::State)?;
@@ -755,6 +766,8 @@ mod tests {
     fn sample_spot() -> ScriptedFlopSpot {
         ScriptedFlopSpot {
             config: gto_core::HoldemConfig::default(),
+            button_starting_stack: None,
+            big_blind_starting_stack: None,
             preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
             flop: [
                 "Kc".parse().unwrap(),
