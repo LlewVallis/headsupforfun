@@ -49,6 +49,11 @@ Primary priorities, in order:
 - Database-backed analysis pipeline
 - CI setup, formatter/linter automation
 
+Note:
+
+- After the first playable artifact-backed CLI is complete, a limited hybrid bot that keeps artifact-backed preflop and adds bounded runtime postflop solving is an acceptable follow-on milestone.
+- This is not the same as full real-time re-solving on every street, which remains out of scope until there is a stronger reason to take on that complexity.
+
 ## Research Summary And Planning Implications
 
 The plan should be informed by what existing open-source solvers actually do well and where they become expensive or fragile.
@@ -572,6 +577,44 @@ Validation:
 - Action latency and smoke training budgets met
 - No regression in fast test loop
 - WASM compilation still passes for `gto-core` and `gto-solver`
+
+### M13. Hybrid CLI Bot With Runtime Postflop Solving
+
+Goal:
+
+- Improve the default play experience quickly by keeping cached artifact-backed preflop, but using the existing runtime solver infrastructure for selected postflop decisions.
+- Produce a bot that is more fun and more credible to play against without waiting for a much stronger full-hand artifact pipeline.
+
+Deliverables:
+
+- Add a hybrid bot mode in `gto-cli`
+- Keep preflop on the cached blueprint artifact
+- Use `PostflopSolverBot` for `turn` and `river` by default in hybrid mode
+- Optionally enable runtime `flop` solving behind an explicit stronger profile
+- Add CLI configuration for hybrid solver profiles such as `fast` and `play`
+- Add a per-decision timeout or bounded-work fallback so the CLI remains responsive
+- Fall back to the cached blueprint action when runtime solving is unavailable, too slow, or produces no action
+- Keep the default developer loop fast and avoid introducing mandatory long training for ordinary play
+
+Validation:
+
+- Transcript and replay tests for hybrid sessions under fixed seeds
+- Integration tests proving the hybrid bot always returns legal actions on every street
+- Regression tests for fallback behavior when the runtime solver cannot build a usable strategy
+- Benchmarks or timed smoke checks for hybrid action latency on `flop`, `turn`, and `river`
+- Manual smoke run confirms the bot feels responsive enough for CLI play
+
+Success criteria:
+
+- The hybrid bot is measurably stronger postflop than the current smoke blueprint bot in practical play
+- `turn` and `river` runtime solving fit within the interactive CLI latency budget
+- `flop` runtime solving is only enabled in profiles where the measured latency is acceptable
+
+Non-goals:
+
+- Replacing the full-hand artifact pipeline
+- Building a true runtime solver for preflop
+- Solving every decision online regardless of latency cost
 
 ## Risk Register
 
