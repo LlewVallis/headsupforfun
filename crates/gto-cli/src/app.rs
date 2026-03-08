@@ -8,18 +8,20 @@ use gto_core::{
 };
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
+    BlueprintBot, FullHandBlueprintArtifact,
     FlopStrategyArtifact, FlopTrainingCheckpoint, FlopTrainingProfile, FlopTrainingSession,
-    PostflopSolverBot, RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile,
-    RiverTrainingSession, ScriptedFlopSpot, ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile,
-    StreetProfile, StubBot, TurnStrategyArtifact, TurnTrainingCheckpoint, TurnTrainingProfile,
-    TurnTrainingSession, abstract_actions, solve_flop_spot, solve_river_spot, solve_turn_spot,
+    RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile, RiverTrainingSession,
+    ScriptedFlopSpot, ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile, StreetProfile, StubBot,
+    TurnStrategyArtifact, TurnTrainingCheckpoint, TurnTrainingProfile, TurnTrainingSession,
+    abstract_actions, solve_flop_spot, solve_river_spot, solve_turn_spot,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliConfig {
     pub seed: u64,
     pub max_hands: Option<usize>,
-    pub use_postflop_solver_bot: bool,
+    pub use_blueprint_bot: bool,
+    pub blueprint_artifact_path: PathBuf,
 }
 
 impl Default for CliConfig {
@@ -27,7 +29,8 @@ impl Default for CliConfig {
         Self {
             seed: DEFAULT_RNG_SEED,
             max_hands: None,
-            use_postflop_solver_bot: true,
+            use_blueprint_bot: true,
+            blueprint_artifact_path: default_full_hand_artifact_path(),
         }
     }
 }
@@ -62,6 +65,10 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
             let options = parse_flop_training_args(&args[1..]).map_err(io::Error::other)?;
             run_train_flop_demo(&mut output, &options)
         }
+        Some("build-blueprint-artifact") => {
+            let options = parse_full_hand_artifact_args(&args[1..]).map_err(io::Error::other)?;
+            run_build_full_hand_artifact(&mut output, &options)
+        }
         _ => run_session(&mut input, &mut output, CliConfig::default()),
     }
 }
@@ -71,7 +78,7 @@ pub fn startup_banner() -> String {
     let profile = SolverProfile::placeholder();
 
     format!(
-        "{name} {version}\nstatus: milestones M4-M9 CLI demos and postflop solver slices\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
+        "{name} {version}\nstatus: milestones M4-M10 full-hand blueprint CLI\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
         name = build.crate_name,
         version = build.crate_version,
         profile = profile.name(),
@@ -88,7 +95,13 @@ pub fn run_session<R: BufRead, W: Write>(
 
     let mut rng = rng_from_seed(config.seed);
     let bot = StubBot;
-    let solver_bot = config.use_postflop_solver_bot.then(PostflopSolverBot::default);
+    let blueprint_bot = if config.use_blueprint_bot {
+        let (artifact, source) = load_or_build_full_hand_artifact(&config.blueprint_artifact_path)?;
+        writeln!(output, "strategy: {source}")?;
+        Some(BlueprintBot::new(artifact))
+    } else {
+        None
+    };
     let mut hand_number = 1usize;
 
     loop {
@@ -101,7 +114,7 @@ pub fn run_session<R: BufRead, W: Write>(
             input,
             output,
             &bot,
-            solver_bot.as_ref(),
+            blueprint_bot.as_ref(),
             &mut rng,
             hand_number,
             human_role,
@@ -233,6 +246,19 @@ impl Default for FlopTrainingOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FullHandArtifactOptions {
+    artifact_path: PathBuf,
+}
+
+impl Default for FullHandArtifactOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_full_hand_artifact_path(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct RiverDemoScenario {
     spot: ScriptedRiverSpot,
     button_range: Range,
@@ -259,7 +285,7 @@ impl RiverDemoScenario {
         Self {
             spot: ScriptedRiverSpot {
                 config: HoldemConfig::default(),
-                preflop_actions: vec![PlayerAction::Call],
+                preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
                     "8d".parse().unwrap(),
@@ -345,7 +371,7 @@ impl TurnDemoScenario {
         Self {
             spot: ScriptedTurnSpot {
                 config: HoldemConfig::default(),
-                preflop_actions: vec![PlayerAction::Call],
+                preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
                     "8d".parse().unwrap(),
@@ -447,7 +473,7 @@ impl FlopDemoScenario {
         Self {
             spot: ScriptedFlopSpot {
                 config: HoldemConfig::default(),
-                preflop_actions: vec![PlayerAction::Call],
+                preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
                     "8d".parse().unwrap(),
@@ -565,7 +591,7 @@ fn run_river_demo<R: BufRead, W: Write>(
     writeln!(output, "bot ({bot_role}): stack={}", state.player(bot_role).stack)?;
     writeln!(
         output,
-        "pot: {} | scripted history: call / check-check / check-check / bot bet 100",
+        "pot: {} | scripted history: call-check / check-check / check-check / bot bet 100",
         state.pot()
     )?;
 
@@ -659,7 +685,7 @@ fn run_turn_demo<R: BufRead, W: Write>(
     writeln!(output, "bot ({bot_role}): stack={}", state.player(bot_role).stack)?;
     writeln!(
         output,
-        "pot: {} | scripted history: call / check-check / bot bet 100 on turn",
+        "pot: {} | scripted history: call-check / check-check / bot bet 100 on turn",
         state.pot()
     )?;
 
@@ -761,7 +787,7 @@ fn run_flop_demo<R: BufRead, W: Write>(
     writeln!(output, "bot ({bot_role}): stack={}", state.player(bot_role).stack)?;
     writeln!(
         output,
-        "pot: {} | scripted history: call / bot bet 100 on flop",
+        "pot: {} | scripted history: call-check / bot bet 100 on flop",
         state.pot()
     )?;
 
@@ -829,7 +855,7 @@ fn play_single_hand<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     bot: &StubBot,
-    solver_bot: Option<&PostflopSolverBot>,
+    blueprint_bot: Option<&BlueprintBot>,
     rng: &mut DeterministicRng,
     hand_number: usize,
     human_role: Player,
@@ -847,20 +873,29 @@ fn play_single_hand<R: BufRead, W: Write>(
         match state.phase() {
             HandPhase::BettingRound { actor, .. } => {
                 if actor == human_role {
-                    if !handle_human_turn(input, output, &mut state, human_role, bot_role)? {
+                    if let Some(blueprint_bot) = blueprint_bot {
+                        let actions =
+                            abstract_actions(&state, blueprint_bot.profile()).map_err(io::Error::other)?;
+                        if !handle_human_abstract_turn_without_history(
+                            input,
+                            output,
+                            &mut state,
+                            &actions,
+                            human_role,
+                            bot_role,
+                        )? {
+                            return Ok(false);
+                        }
+                    } else if !handle_human_turn(input, output, &mut state, human_role, bot_role)? {
                         return Ok(false);
                     }
                 } else {
-                    let action = if state.street() == gto_core::Street::Preflop {
-                        bot.choose_action(&state).map_err(io::Error::other)?
+                    let action = if let Some(blueprint_bot) = blueprint_bot {
+                        blueprint_bot
+                            .choose_action(bot_role, &state)
+                            .map_err(io::Error::other)?
                     } else {
-                        match solver_bot {
-                            Some(solver_bot) => match solver_bot.choose_action(bot_role, &state) {
-                                Ok(action) => action,
-                                Err(_) => bot.choose_action(&state).map_err(io::Error::other)?,
-                            },
-                            None => bot.choose_action(&state).map_err(io::Error::other)?,
-                        }
+                        bot.choose_action(&state).map_err(io::Error::other)?
                     };
                     writeln!(
                         output,
@@ -1106,6 +1141,28 @@ fn parse_flop_training_args(args: &[String]) -> Result<FlopTrainingOptions, &'st
     Ok(options)
 }
 
+fn parse_full_hand_artifact_args(
+    args: &[String],
+) -> Result<FullHandArtifactOptions, &'static str> {
+    let mut options = FullHandArtifactOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            _ => return Err("unknown build-blueprint-artifact option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
 fn run_train_river_demo<W: Write>(
     output: &mut W,
     options: &RiverTrainingOptions,
@@ -1277,14 +1334,41 @@ fn run_train_flop_demo<W: Write>(
     Ok(())
 }
 
+fn run_build_full_hand_artifact<W: Write>(
+    output: &mut W,
+    options: &FullHandArtifactOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+    let artifact = FullHandBlueprintArtifact::smoke_default();
+    write_full_hand_artifact(&options.artifact_path, &artifact)?;
+    writeln!(
+        output,
+        "artifact: preflop={} postflop={} -> {}",
+        artifact.preflop_policies.len(),
+        artifact.postflop_policies.len(),
+        options.artifact_path.display()
+    )?;
+    Ok(())
+}
+
 fn load_or_build_river_demo_artifact(
     scenario: &RiverDemoScenario,
     options: &RiverDemoOptions,
 ) -> io::Result<(RiverStrategyArtifact, String)> {
     match read_river_artifact(&options.artifact_path) {
-        Ok(artifact) => Ok((
+        Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
             format!("loaded {}", options.artifact_path.display()),
+        )),
+        Ok(_) if options.solve_if_missing => Ok((
+            scenario.build_artifact(scenario.artifact_iterations)?,
+            format!(
+                "generated inline (default artifact incompatible at {})",
+                options.artifact_path.display()
+            ),
+        )),
+        Ok(_) => Err(io::Error::other(
+            "river demo artifact does not match the built-in scenario",
         )),
         Err(error) if error.kind() == io::ErrorKind::NotFound && options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
@@ -1302,9 +1386,19 @@ fn load_or_build_turn_demo_artifact(
     options: &TurnDemoOptions,
 ) -> io::Result<(TurnStrategyArtifact, String)> {
     match read_turn_artifact(&options.artifact_path) {
-        Ok(artifact) => Ok((
+        Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
             format!("loaded {}", options.artifact_path.display()),
+        )),
+        Ok(_) if options.solve_if_missing => Ok((
+            scenario.build_artifact(scenario.artifact_iterations)?,
+            format!(
+                "generated inline (default artifact incompatible at {})",
+                options.artifact_path.display()
+            ),
+        )),
+        Ok(_) => Err(io::Error::other(
+            "turn demo artifact does not match the built-in scenario",
         )),
         Err(error) if error.kind() == io::ErrorKind::NotFound && options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
@@ -1322,9 +1416,19 @@ fn load_or_build_flop_demo_artifact(
     options: &FlopDemoOptions,
 ) -> io::Result<(FlopStrategyArtifact, String)> {
     match read_flop_artifact(&options.artifact_path) {
-        Ok(artifact) => Ok((
+        Ok(artifact) if scenario.validate_artifact(&artifact).is_ok() => Ok((
             artifact,
             format!("loaded {}", options.artifact_path.display()),
+        )),
+        Ok(_) if options.solve_if_missing => Ok((
+            scenario.build_artifact(scenario.artifact_iterations)?,
+            format!(
+                "generated inline (default artifact incompatible at {})",
+                options.artifact_path.display()
+            ),
+        )),
+        Ok(_) => Err(io::Error::other(
+            "flop demo artifact does not match the built-in scenario",
         )),
         Err(error) if error.kind() == io::ErrorKind::NotFound && options.solve_if_missing => Ok((
             scenario.build_artifact(scenario.artifact_iterations)?,
@@ -1369,6 +1473,32 @@ fn read_flop_artifact(path: &Path) -> io::Result<FlopStrategyArtifact> {
 }
 
 fn write_flop_artifact(path: &Path, artifact: &FlopStrategyArtifact) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = artifact.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
+fn load_or_build_full_hand_artifact(
+    path: &Path,
+) -> io::Result<(FullHandBlueprintArtifact, String)> {
+    match read_full_hand_artifact(path) {
+        Ok(artifact) => Ok((artifact, format!("loaded {}", path.display()))),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok((
+            FullHandBlueprintArtifact::smoke_default(),
+            format!("generated inline (default artifact missing at {})", path.display()),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_full_hand_artifact(path: &Path) -> io::Result<FullHandBlueprintArtifact> {
+    let encoded = fs::read_to_string(path)?;
+    FullHandBlueprintArtifact::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_full_hand_artifact(path: &Path, artifact: &FullHandBlueprintArtifact) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -1425,6 +1555,13 @@ fn default_turn_demo_artifact_path() -> PathBuf {
 
 fn default_flop_demo_artifact_path() -> PathBuf {
     workspace_root().join("fixtures").join("strategies").join("flop_demo.json")
+}
+
+fn default_full_hand_artifact_path() -> PathBuf {
+    workspace_root()
+        .join("fixtures")
+        .join("strategies")
+        .join("full_hand_smoke.json")
 }
 
 fn default_river_demo_checkpoint_path() -> PathBuf {
@@ -1511,6 +1648,35 @@ fn handle_human_abstract_turn<R: BufRead, W: Write>(
     }
 }
 
+fn handle_human_abstract_turn_without_history<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    state: &mut HoldemHandState,
+    actions: &[AbstractAction],
+    human_role: Player,
+    bot_role: Player,
+) -> io::Result<bool> {
+    loop {
+        render_player_abstract_decision_prompt(output, state, actions, human_role, bot_role)?;
+        let Some(line) = read_line(input, output)? else {
+            return Ok(false);
+        };
+        match parse_human_abstract_action(&line, actions) {
+            Ok(Some(action)) => {
+                state
+                    .apply_action(action.to_player_action())
+                    .map_err(io::Error::other)?;
+                return Ok(true);
+            }
+            Ok(None) => {
+                writeln!(output, "Exiting.")?;
+                return Ok(false);
+            }
+            Err(error) => writeln!(output, "Invalid action: {error}")?,
+        }
+    }
+}
+
 fn render_decision_prompt<W: Write>(
     output: &mut W,
     state: &HoldemHandState,
@@ -1545,6 +1711,41 @@ fn render_abstract_decision_prompt<W: Write>(
     writeln!(output, "\nStreet: {}", state.street())?;
     writeln!(output, "Board: {}", format_board(state))?;
     writeln!(output, "Pot: {}", state.pot())?;
+    writeln!(
+        output,
+        "Options: {}",
+        actions
+            .iter()
+            .enumerate()
+            .map(|(index, action)| format!("{}: {}", index + 1, describe_abstract_action(*action)))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    )?;
+    write!(output, "> ")?;
+    output.flush()
+}
+
+fn render_player_abstract_decision_prompt<W: Write>(
+    output: &mut W,
+    state: &HoldemHandState,
+    actions: &[AbstractAction],
+    human_role: Player,
+    bot_role: Player,
+) -> io::Result<()> {
+    writeln!(output, "\nStreet: {}", state.street())?;
+    writeln!(output, "Board: {}", format_board(state))?;
+    writeln!(output, "Pot: {}", state.pot())?;
+    writeln!(
+        output,
+        "You ({human_role}): stack={} hand={}",
+        state.player(human_role).stack,
+        format_hole_cards(state.player(human_role).hole_cards),
+    )?;
+    writeln!(
+        output,
+        "Bot ({bot_role}): stack={}",
+        state.player(bot_role).stack,
+    )?;
     writeln!(
         output,
         "Options: {}",
@@ -1858,12 +2059,15 @@ mod tests {
     use super::{
         CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions, RiverDemoScenario,
         TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
-        default_river_demo_artifact_path, default_turn_demo_artifact_path, run_flop_demo,
-        run_river_demo, run_session, run_train_flop_demo, run_train_river_demo,
-        run_train_turn_demo, run_turn_demo, startup_banner, write_flop_artifact,
-        write_river_artifact, write_turn_artifact,
+        default_full_hand_artifact_path, default_river_demo_artifact_path,
+        default_turn_demo_artifact_path, run_flop_demo, run_river_demo, run_session,
+        run_train_flop_demo, run_train_river_demo, run_train_turn_demo, run_turn_demo,
+        startup_banner, write_flop_artifact, write_full_hand_artifact, write_river_artifact,
+        write_turn_artifact,
     };
-    use gto_solver::{FlopTrainingProfile, RiverTrainingProfile, TurnTrainingProfile};
+    use gto_solver::{
+        FlopTrainingProfile, FullHandBlueprintArtifact, RiverTrainingProfile, TurnTrainingProfile,
+    };
     use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
@@ -1874,7 +2078,7 @@ mod tests {
         let banner = startup_banner();
 
         assert!(banner.contains("gto-solver"));
-        assert!(banner.contains("milestones M4-M9 CLI demos and postflop solver slices"));
+        assert!(banner.contains("milestones M4-M10 full-hand blueprint CLI"));
     }
 
     #[test]
@@ -1888,7 +2092,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_postflop_solver_bot: false,
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         )
         .unwrap();
@@ -1912,7 +2117,8 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_postflop_solver_bot: false,
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         )
         .unwrap();
@@ -1932,13 +2138,63 @@ mod tests {
             CliConfig {
                 seed: 7,
                 max_hands: Some(1),
-                use_postflop_solver_bot: false,
+                use_blueprint_bot: false,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
             },
         )
         .unwrap();
 
         let transcript = String::from_utf8(output).unwrap();
         assert!(transcript.contains("Input closed; exiting."));
+    }
+
+    #[test]
+    fn blueprint_session_can_generate_a_missing_artifact_inline() {
+        let artifact_path = unique_test_path("missing-full-hand-smoke.json");
+        let mut output = Vec::new();
+
+        run_session(
+            &mut Cursor::new(&b"1\n"[..]),
+            &mut output,
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                use_blueprint_bot: true,
+                blueprint_artifact_path: artifact_path.clone(),
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("strategy: generated inline"));
+        assert!(transcript.contains("Options: 1: fold"));
+        assert!(transcript.contains("wins"));
+    }
+
+    #[test]
+    fn blueprint_session_can_load_a_saved_artifact() {
+        let artifact_path = unique_test_path("full-hand-smoke.json");
+        write_full_hand_artifact(&artifact_path, &FullHandBlueprintArtifact::smoke_default())
+            .unwrap();
+        let mut output = Vec::new();
+
+        run_session(
+            &mut Cursor::new(&b"1\n"[..]),
+            &mut output,
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                use_blueprint_bot: true,
+                blueprint_artifact_path: artifact_path.clone(),
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("strategy: loaded"));
+        assert!(transcript.contains("Options: 1: fold"));
+
+        let _ = fs::remove_file(artifact_path);
     }
 
     #[test]

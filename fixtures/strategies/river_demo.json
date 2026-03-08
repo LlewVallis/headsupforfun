@@ -7,7 +7,8 @@
       "big_blind": 100
     },
     "preflop_actions": [
-      "Call"
+      "Call",
+      "Check"
     ],
     "flop": [
       {
@@ -179,7 +180,7 @@
       "include_all_in": false
     }
   },
-  "iterations": 2000,
+  "iterations": 8000,
   "entries": [
     {
       "infoset": {
@@ -244,17 +245,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.00003632190703677611
+          "probability": 9.079720031777226e-6
         },
         {
           "action": "Fold",
-          "probability": 0.00001852057636033633
+          "probability": 4.629758234025019e-6
         },
         {
           "action": {
             "RaiseTo": 8100
           },
-          "probability": 0.9999451575166028
+          "probability": 0.9999862905217343
         }
       ]
     },
@@ -315,17 +316,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.00005555555555555555
+          "probability": 0.000013888888888888888
         },
         {
           "action": "Fold",
-          "probability": 0.00005555555555555555
+          "probability": 0.000013888888888888888
         },
         {
           "action": {
             "RaiseTo": 900
           },
-          "probability": 0.9998888888888888
+          "probability": 0.9999722222222222
         }
       ]
     },
@@ -392,17 +393,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         },
         {
           "action": "Fold",
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         },
         {
           "action": {
             "RaiseTo": 8100
           },
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         }
       ]
     },
@@ -463,17 +464,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         },
         {
           "action": "Fold",
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         },
         {
           "action": {
             "RaiseTo": 900
           },
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         }
       ]
     },
@@ -540,17 +541,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         },
         {
           "action": "Fold",
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         },
         {
           "action": {
             "RaiseTo": 8100
           },
-          "probability": 0.33333333333333337
+          "probability": 0.3333333333333333
         }
       ]
     },
@@ -611,17 +612,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         },
         {
           "action": "Fold",
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         },
         {
           "action": {
             "RaiseTo": 900
           },
-          "probability": 0.3333333333333333
+          "probability": 0.33333333333333337
         }
       ]
     },
@@ -759,7 +760,7 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.3765892107890004
+          "probability": 0.37658921078900043
         },
         {
           "action": "Fold",
@@ -769,7 +770,7 @@
           "action": {
             "RaiseTo": 2700
           },
-          "probability": 0.1619779823505348
+          "probability": 0.16197798235053476
         }
       ]
     },
@@ -826,17 +827,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.9846446858943692
+          "probability": 0.9926240568621282
         },
         {
           "action": "Fold",
-          "probability": 0.015168433581008941
+          "probability": 0.0073292230067163
         },
         {
           "action": {
             "RaiseTo": 300
           },
-          "probability": 0.00018688052462194652
+          "probability": 0.000046720131155486475
         }
       ]
     },
@@ -1041,17 +1042,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.9847973900197486
+          "probability": 0.9926605739825153
         },
         {
           "action": "Fold",
-          "probability": 0.015064453617976585
+          "probability": 0.007304886926916067
         },
         {
           "action": {
             "RaiseTo": 300
           },
-          "probability": 0.00013815636227470932
+          "probability": 0.000034539090568677445
         }
       ]
     },
@@ -1256,17 +1257,17 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.0007798326680597213
+          "probability": 0.00019495816701493035
         },
         {
           "action": "Fold",
-          "probability": 0.9991368339986069
+          "probability": 0.9997842084996518
         },
         {
           "action": {
             "RaiseTo": 300
           },
-          "probability": 0.00008333333333333332
+          "probability": 0.000020833333333333333
         }
       ]
     }

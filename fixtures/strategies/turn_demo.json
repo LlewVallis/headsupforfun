@@ -7,7 +7,8 @@
       "big_blind": 100
     },
     "preflop_actions": [
-      "Call"
+      "Call",
+      "Check"
     ],
     "flop": [
       {
@@ -170,7 +171,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -302,7 +303,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -434,7 +435,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -566,7 +567,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -698,7 +699,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -830,7 +831,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -962,7 +963,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -1094,7 +1095,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -1226,7 +1227,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -1358,7 +1359,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -1402,402 +1403,6 @@
             },
             {
               "rank": "Four",
-              "suit": "Hearts"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 800,
-          "button_stack": 9400,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 600,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 400,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call",
-          "Check",
-          {
-            "BetTo": 400
-          }
-        ]
-      },
-      "actions": [
-        {
-          "action": "Call",
-          "probability": 0.0025395876904690767
-        },
-        {
-          "action": "Fold",
-          "probability": 0.997460412309531
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
-              "suit": "Clubs"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 400,
-          "button_stack": 9800,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 200,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 0,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call"
-        ]
-      },
-      "actions": [
-        {
-          "action": {
-            "BetTo": 400
-          },
-          "probability": 0.015588235294117646
-        },
-        {
-          "action": "Check",
-          "probability": 0.9844117647058823
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
-              "suit": "Clubs"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 800,
-          "button_stack": 9400,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 600,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 400,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call",
-          "Check",
-          {
-            "BetTo": 400
-          }
-        ]
-      },
-      "actions": [
-        {
-          "action": "Call",
-          "probability": 0.0025395876904690767
-        },
-        {
-          "action": "Fold",
-          "probability": 0.997460412309531
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
-              "suit": "Diamonds"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 400,
-          "button_stack": 9800,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 200,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 0,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call"
-        ]
-      },
-      "actions": [
-        {
-          "action": {
-            "BetTo": 400
-          },
-          "probability": 0.015588235294117646
-        },
-        {
-          "action": "Check",
-          "probability": 0.9844117647058823
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
-              "suit": "Diamonds"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 800,
-          "button_stack": 9400,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 600,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 400,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call",
-          "Check",
-          {
-            "BetTo": 400
-          }
-        ]
-      },
-      "actions": [
-        {
-          "action": "Call",
-          "probability": 0.0025395876904690767
-        },
-        {
-          "action": "Fold",
-          "probability": 0.997460412309531
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
-              "suit": "Hearts"
-            }
-          ],
-          "actor": "BigBlind",
-          "pot": 400,
-          "button_stack": 9800,
-          "big_blind_stack": 9800,
-          "button_total_contribution": 200,
-          "big_blind_total_contribution": 200,
-          "button_street_contribution": 0,
-          "big_blind_street_contribution": 0
-        },
-        "public_history": [
-          "Call"
-        ]
-      },
-      "actions": [
-        {
-          "action": {
-            "BetTo": 400
-          },
-          "probability": 0.015588235294117646
-        },
-        {
-          "action": "Check",
-          "probability": 0.9844117647058823
-        }
-      ]
-    },
-    {
-      "infoset": {
-        "player": "BigBlind",
-        "hole_cards": {
-          "cards": [
-            {
-              "rank": "Ace",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Queen",
-              "suit": "Hearts"
-            }
-          ]
-        },
-        "public_state": {
-          "street": "River",
-          "board": [
-            {
-              "rank": "King",
-              "suit": "Clubs"
-            },
-            {
-              "rank": "Eight",
-              "suit": "Diamonds"
-            },
-            {
-              "rank": "Four",
-              "suit": "Spades"
-            },
-            {
-              "rank": "Three",
-              "suit": "Hearts"
-            },
-            {
-              "rank": "Five",
               "suit": "Hearts"
             }
           ],
@@ -1865,6 +1470,402 @@
             },
             {
               "rank": "Five",
+              "suit": "Clubs"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 400,
+          "button_stack": 9800,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 200,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call"
+        ]
+      },
+      "actions": [
+        {
+          "action": {
+            "BetTo": 400
+          },
+          "probability": 0.015588235294117648
+        },
+        {
+          "action": "Check",
+          "probability": 0.9844117647058823
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
+              "suit": "Clubs"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 800,
+          "button_stack": 9400,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 600,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 400,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call",
+          "Check",
+          {
+            "BetTo": 400
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.0025395876904690767
+        },
+        {
+          "action": "Fold",
+          "probability": 0.997460412309531
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 400,
+          "button_stack": 9800,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 200,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call"
+        ]
+      },
+      "actions": [
+        {
+          "action": {
+            "BetTo": 400
+          },
+          "probability": 0.015588235294117648
+        },
+        {
+          "action": "Check",
+          "probability": 0.9844117647058823
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
+              "suit": "Diamonds"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 800,
+          "button_stack": 9400,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 600,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 400,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call",
+          "Check",
+          {
+            "BetTo": 400
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.0025395876904690767
+        },
+        {
+          "action": "Fold",
+          "probability": 0.997460412309531
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
+              "suit": "Hearts"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 400,
+          "button_stack": 9800,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 200,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 0,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call"
+        ]
+      },
+      "actions": [
+        {
+          "action": {
+            "BetTo": 400
+          },
+          "probability": 0.015588235294117648
+        },
+        {
+          "action": "Check",
+          "probability": 0.9844117647058823
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
+              "suit": "Hearts"
+            }
+          ],
+          "actor": "BigBlind",
+          "pot": 800,
+          "button_stack": 9400,
+          "big_blind_stack": 9800,
+          "button_total_contribution": 600,
+          "big_blind_total_contribution": 200,
+          "button_street_contribution": 400,
+          "big_blind_street_contribution": 0
+        },
+        "public_history": [
+          "Call",
+          "Check",
+          {
+            "BetTo": 400
+          }
+        ]
+      },
+      "actions": [
+        {
+          "action": "Call",
+          "probability": 0.0025395876904690767
+        },
+        {
+          "action": "Fold",
+          "probability": 0.997460412309531
+        }
+      ]
+    },
+    {
+      "infoset": {
+        "player": "BigBlind",
+        "hole_cards": {
+          "cards": [
+            {
+              "rank": "Ace",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Queen",
+              "suit": "Hearts"
+            }
+          ]
+        },
+        "public_state": {
+          "street": "River",
+          "board": [
+            {
+              "rank": "King",
+              "suit": "Clubs"
+            },
+            {
+              "rank": "Eight",
+              "suit": "Diamonds"
+            },
+            {
+              "rank": "Four",
+              "suit": "Spades"
+            },
+            {
+              "rank": "Three",
+              "suit": "Hearts"
+            },
+            {
+              "rank": "Five",
               "suit": "Spades"
             }
           ],
@@ -1886,7 +1887,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2018,7 +2019,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2150,7 +2151,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2282,7 +2283,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2414,7 +2415,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2546,7 +2547,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2678,7 +2679,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2810,7 +2811,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -2942,7 +2943,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -3074,7 +3075,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -3206,7 +3207,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -3338,7 +3339,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -3470,7 +3471,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -3602,7 +3603,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4130,7 +4131,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4262,7 +4263,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4394,7 +4395,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4526,7 +4527,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4658,7 +4659,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4790,7 +4791,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -4922,7 +4923,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -5450,7 +5451,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -5582,7 +5583,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -5714,7 +5715,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
@@ -5846,7 +5847,7 @@
           "action": {
             "BetTo": 400
           },
-          "probability": 0.015588235294117646
+          "probability": 0.015588235294117648
         },
         {
           "action": "Check",
