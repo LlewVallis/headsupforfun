@@ -16,7 +16,7 @@ harness = false
 [features]
 default = ["std", "serde"]
 parallel = []
-serde = ["dep:serde", "serde/alloc", "dep:serde_json", "gto-core/serde"]
+serde = ["dep:serde", "dep:serde_json", "gto-core/serde"]
 std = ["gto-core/std"]
 
 [dependencies]
