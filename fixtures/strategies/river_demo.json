@@ -244,7 +244,7 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.00003632190703677612
+          "probability": 0.00003632190703677611
         },
         {
           "action": "Fold",
@@ -759,7 +759,7 @@
       "actions": [
         {
           "action": "Call",
-          "probability": 0.37658921078900043
+          "probability": 0.3765892107890004
         },
         {
           "action": "Fold",
@@ -769,7 +769,7 @@
           "action": {
             "RaiseTo": 2700
           },
-          "probability": 0.16197798235053476
+          "probability": 0.1619779823505348
         }
       ]
     },

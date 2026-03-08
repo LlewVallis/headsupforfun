@@ -4,8 +4,8 @@ use std::fmt::{self, Display, Formatter};
 use std::rc::Rc;
 
 use gto_core::{
-    Card, HandOutcome, HandPhase, HoldemConfig, HoldemHandState, HoldemStateError, HoleCards,
-    Player, PlayerAction, Range,
+    Card, CardMask, HandOutcome, HandPhase, HoldemConfig, HoldemHandState, HoldemStateError,
+    HoleCards, Player, PlayerAction, Range, Street,
 };
 
 use crate::{
@@ -15,67 +15,55 @@ use crate::{
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScriptedRiverSpot {
+pub struct ScriptedTurnSpot {
     pub config: HoldemConfig,
     pub preflop_actions: Vec<PlayerAction>,
     pub flop: [Card; 3],
     pub flop_actions: Vec<PlayerAction>,
     pub turn: Card,
-    pub turn_actions: Vec<PlayerAction>,
-    pub river: Card,
-    pub river_prefix_actions: Vec<PlayerAction>,
+    pub turn_prefix_actions: Vec<PlayerAction>,
 }
 
-impl ScriptedRiverSpot {
+impl ScriptedTurnSpot {
     pub fn build_state(
         &self,
         button_hole_cards: HoleCards,
         big_blind_hole_cards: HoleCards,
-    ) -> Result<HoldemHandState, RiverSolveError> {
+    ) -> Result<HoldemHandState, TurnSolveError> {
         let mut state = HoldemHandState::new(self.config, button_hole_cards, big_blind_hole_cards)
-            .map_err(RiverSolveError::State)?;
+            .map_err(TurnSolveError::State)?;
 
         for action in &self.preflop_actions {
-            state.apply_action(*action).map_err(RiverSolveError::State)?;
+            state.apply_action(*action).map_err(TurnSolveError::State)?;
         }
-        state.deal_flop(self.flop).map_err(RiverSolveError::State)?;
+        state.deal_flop(self.flop).map_err(TurnSolveError::State)?;
         for action in &self.flop_actions {
-            state.apply_action(*action).map_err(RiverSolveError::State)?;
+            state.apply_action(*action).map_err(TurnSolveError::State)?;
         }
-        state.deal_turn(self.turn).map_err(RiverSolveError::State)?;
-        for action in &self.turn_actions {
-            state.apply_action(*action).map_err(RiverSolveError::State)?;
-        }
-        state.deal_river(self.river).map_err(RiverSolveError::State)?;
-        for action in &self.river_prefix_actions {
-            state.apply_action(*action).map_err(RiverSolveError::State)?;
+        state.deal_turn(self.turn).map_err(TurnSolveError::State)?;
+        for action in &self.turn_prefix_actions {
+            state.apply_action(*action).map_err(TurnSolveError::State)?;
         }
 
         match state.phase() {
-            HandPhase::BettingRound { street, .. } if street == gto_core::Street::River => Ok(state),
-            HandPhase::Terminal { .. } => Err(RiverSolveError::SpotAlreadyTerminal),
-            phase => Err(RiverSolveError::UnexpectedPhase(phase)),
+            HandPhase::BettingRound { street, .. } if street == Street::Turn => Ok(state),
+            HandPhase::Terminal { .. } => Err(TurnSolveError::SpotAlreadyTerminal),
+            phase => Err(TurnSolveError::UnexpectedPhase(phase)),
         }
     }
 
-    pub fn board_cards(&self) -> [Card; 5] {
-        [
-            self.flop[0],
-            self.flop[1],
-            self.flop[2],
-            self.turn,
-            self.river,
-        ]
+    pub fn board_cards(&self) -> [Card; 4] {
+        [self.flop[0], self.flop[1], self.flop[2], self.turn]
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RiverSolverResult {
+pub struct TurnSolverResult {
     iterations: u64,
     strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
 }
 
-impl RiverSolverResult {
+impl TurnSolverResult {
     fn from_strategy_snapshot(
         iterations: u64,
         strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
@@ -90,10 +78,7 @@ impl RiverSolverResult {
         self.iterations
     }
 
-    pub fn strategy_for(
-        &self,
-        infoset: &HoldemInfoSetKey,
-    ) -> Option<&[(AbstractAction, f64)]> {
+    pub fn strategy_for(&self, infoset: &HoldemInfoSetKey) -> Option<&[(AbstractAction, f64)]> {
         self.strategy.get(infoset).map(Vec::as_slice)
     }
 
@@ -109,12 +94,12 @@ impl RiverSolverResult {
 
     pub fn into_artifact(
         self,
-        spot: ScriptedRiverSpot,
+        spot: ScriptedTurnSpot,
         button_range: Range,
         big_blind_range: Range,
         profile: AbstractionProfile,
-    ) -> RiverStrategyArtifact {
-        RiverStrategyArtifact::from_solver_result(
+    ) -> TurnStrategyArtifact {
+        TurnStrategyArtifact::from_solver_result(
             spot,
             button_range,
             big_blind_range,
@@ -124,27 +109,30 @@ impl RiverSolverResult {
     }
 }
 
+pub type TurnStrategyEntry = crate::river::RiverStrategyEntry;
+pub type TurnActionProbability = crate::river::RiverActionProbability;
+
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RiverStrategyArtifact {
+pub struct TurnStrategyArtifact {
     pub format_version: u32,
-    pub spot: ScriptedRiverSpot,
+    pub spot: ScriptedTurnSpot,
     pub button_range: Range,
     pub big_blind_range: Range,
     pub profile: AbstractionProfile,
     pub iterations: u64,
-    pub entries: Vec<RiverStrategyEntry>,
+    pub entries: Vec<TurnStrategyEntry>,
 }
 
-impl RiverStrategyArtifact {
+impl TurnStrategyArtifact {
     pub const FORMAT_VERSION: u32 = 1;
 
     pub fn from_solver_result(
-        spot: ScriptedRiverSpot,
+        spot: ScriptedTurnSpot,
         button_range: Range,
         big_blind_range: Range,
         profile: AbstractionProfile,
-        result: RiverSolverResult,
+        result: TurnSolverResult,
     ) -> Self {
         let mut entries = snapshot_to_entries(result.strategy);
         sort_strategy_entries(&mut entries);
@@ -160,19 +148,19 @@ impl RiverStrategyArtifact {
         }
     }
 
-    pub fn to_solver_result(&self) -> Result<RiverSolverResult, RiverArtifactError> {
+    pub fn to_solver_result(&self) -> Result<TurnSolverResult, TurnArtifactError> {
         self.validate_version()?;
-        Ok(RiverSolverResult::from_strategy_snapshot(
+        Ok(TurnSolverResult::from_strategy_snapshot(
             self.iterations,
             entries_to_snapshot(&self.entries),
         ))
     }
 
-    fn validate_version(&self) -> Result<(), RiverArtifactError> {
+    fn validate_version(&self) -> Result<(), TurnArtifactError> {
         if self.format_version == Self::FORMAT_VERSION {
             Ok(())
         } else {
-            Err(RiverArtifactError::UnsupportedFormatVersion {
+            Err(TurnArtifactError::UnsupportedFormatVersion {
                 expected: Self::FORMAT_VERSION,
                 actual: self.format_version,
             })
@@ -180,15 +168,15 @@ impl RiverStrategyArtifact {
     }
 
     #[cfg(feature = "serde")]
-    pub fn to_json_string(&self) -> Result<String, RiverArtifactError> {
+    pub fn to_json_string(&self) -> Result<String, TurnArtifactError> {
         self.validate_version()?;
-        serde_json::to_string_pretty(self).map_err(|error| RiverArtifactError::Encode(error.to_string()))
+        serde_json::to_string_pretty(self).map_err(|error| TurnArtifactError::Encode(error.to_string()))
     }
 
     #[cfg(feature = "serde")]
-    pub fn from_json_str(input: &str) -> Result<Self, RiverArtifactError> {
+    pub fn from_json_str(input: &str) -> Result<Self, TurnArtifactError> {
         let artifact = serde_json::from_str::<Self>(input)
-            .map_err(|error| RiverArtifactError::Decode(error.to_string()))?;
+            .map_err(|error| TurnArtifactError::Decode(error.to_string()))?;
         artifact.validate_version()?;
         Ok(artifact)
     }
@@ -196,23 +184,23 @@ impl RiverStrategyArtifact {
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub struct RiverTrainingCheckpoint {
+pub struct TurnTrainingCheckpoint {
     pub format_version: u32,
-    pub spot: ScriptedRiverSpot,
+    pub spot: ScriptedTurnSpot,
     pub button_range: Range,
     pub big_blind_range: Range,
     pub profile: AbstractionProfile,
     pub checkpoint: CfrCheckpoint<AbstractAction, HoldemInfoSetKey>,
 }
 
-impl RiverTrainingCheckpoint {
+impl TurnTrainingCheckpoint {
     pub const FORMAT_VERSION: u32 = 1;
 
-    fn validate_version(&self) -> Result<(), RiverCheckpointError> {
+    fn validate_version(&self) -> Result<(), TurnCheckpointError> {
         if self.format_version == Self::FORMAT_VERSION {
             Ok(())
         } else {
-            Err(RiverCheckpointError::UnsupportedFormatVersion {
+            Err(TurnCheckpointError::UnsupportedFormatVersion {
                 expected: Self::FORMAT_VERSION,
                 actual: self.format_version,
             })
@@ -220,40 +208,40 @@ impl RiverTrainingCheckpoint {
     }
 
     #[cfg(feature = "serde")]
-    pub fn to_json_string(&self) -> Result<String, RiverCheckpointError> {
+    pub fn to_json_string(&self) -> Result<String, TurnCheckpointError> {
         self.validate_version()?;
         serde_json::to_string_pretty(self)
-            .map_err(|error| RiverCheckpointError::Encode(error.to_string()))
+            .map_err(|error| TurnCheckpointError::Encode(error.to_string()))
     }
 
     #[cfg(feature = "serde")]
-    pub fn from_json_str(input: &str) -> Result<Self, RiverCheckpointError> {
+    pub fn from_json_str(input: &str) -> Result<Self, TurnCheckpointError> {
         let checkpoint = serde_json::from_str::<Self>(input)
-            .map_err(|error| RiverCheckpointError::Decode(error.to_string()))?;
+            .map_err(|error| TurnCheckpointError::Decode(error.to_string()))?;
         checkpoint.validate_version()?;
         Ok(checkpoint)
     }
 }
 
-pub type RiverTrainingProfile = TrainingProfile;
+pub type TurnTrainingProfile = TrainingProfile;
 
 #[derive(Debug, Clone)]
-pub struct RiverTrainingSession {
-    spot: ScriptedRiverSpot,
+pub struct TurnTrainingSession {
+    spot: ScriptedTurnSpot,
     button_range: Range,
     big_blind_range: Range,
     profile: AbstractionProfile,
-    solver: CfrPlusSolver<RiverGameState>,
+    solver: CfrPlusSolver<TurnGameState>,
 }
 
-impl RiverTrainingSession {
+impl TurnTrainingSession {
     pub fn new(
-        spot: ScriptedRiverSpot,
+        spot: ScriptedTurnSpot,
         button_range: Range,
         big_blind_range: Range,
         profile: AbstractionProfile,
-    ) -> Result<Self, RiverSolveError> {
-        let definition = Rc::new(RiverGameDefinition::new(
+    ) -> Result<Self, TurnSolveError> {
+        let definition = Rc::new(TurnGameDefinition::new(
             spot.clone(),
             button_range.clone(),
             big_blind_range.clone(),
@@ -265,22 +253,22 @@ impl RiverTrainingSession {
             button_range,
             big_blind_range,
             profile,
-            solver: CfrPlusSolver::new(RiverGameState::root(definition)),
+            solver: CfrPlusSolver::new(TurnGameState::root(definition)),
         })
     }
 
     pub fn from_checkpoint(
-        checkpoint: RiverTrainingCheckpoint,
-    ) -> Result<Self, RiverTrainingError> {
+        checkpoint: TurnTrainingCheckpoint,
+    ) -> Result<Self, TurnTrainingError> {
         checkpoint.validate_version()?;
-        let definition = Rc::new(RiverGameDefinition::new(
+        let definition = Rc::new(TurnGameDefinition::new(
             checkpoint.spot.clone(),
             checkpoint.button_range.clone(),
             checkpoint.big_blind_range.clone(),
             checkpoint.profile.clone(),
         )?);
         let solver = CfrPlusSolver::from_checkpoint(
-            RiverGameState::root(definition),
+            TurnGameState::root(definition),
             checkpoint.checkpoint,
         )?;
 
@@ -301,9 +289,9 @@ impl RiverTrainingSession {
         self.solver.iterations()
     }
 
-    pub fn checkpoint(&self) -> RiverTrainingCheckpoint {
-        RiverTrainingCheckpoint {
-            format_version: RiverTrainingCheckpoint::FORMAT_VERSION,
+    pub fn checkpoint(&self) -> TurnTrainingCheckpoint {
+        TurnTrainingCheckpoint {
+            format_version: TurnTrainingCheckpoint::FORMAT_VERSION,
             spot: self.spot.clone(),
             button_range: self.button_range.clone(),
             big_blind_range: self.big_blind_range.clone(),
@@ -312,7 +300,7 @@ impl RiverTrainingSession {
         }
     }
 
-    pub fn strategy_artifact(&self) -> RiverStrategyArtifact {
+    pub fn strategy_artifact(&self) -> TurnStrategyArtifact {
         self.solver_result().into_artifact(
             self.spot.clone(),
             self.button_range.clone(),
@@ -321,55 +309,40 @@ impl RiverTrainingSession {
         )
     }
 
-    pub fn solver_result(&self) -> RiverSolverResult {
-        RiverSolverResult::from_strategy_snapshot(
+    pub fn solver_result(&self) -> TurnSolverResult {
+        TurnSolverResult::from_strategy_snapshot(
             self.solver.iterations(),
             self.solver.average_strategy_snapshot(),
         )
     }
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub struct RiverStrategyEntry {
-    pub infoset: HoldemInfoSetKey,
-    pub actions: Vec<RiverActionProbability>,
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub struct RiverActionProbability {
-    pub action: AbstractAction,
-    pub probability: f64,
-}
-
-pub fn solve_river_spot(
-    spot: ScriptedRiverSpot,
+pub fn solve_turn_spot(
+    spot: ScriptedTurnSpot,
     button_range: Range,
     big_blind_range: Range,
     profile: AbstractionProfile,
     iterations: u64,
-) -> Result<RiverSolverResult, RiverSolveError> {
-    let mut training = RiverTrainingSession::new(spot, button_range, big_blind_range, profile)?;
+) -> Result<TurnSolverResult, TurnSolveError> {
+    let mut training = TurnTrainingSession::new(spot, button_range, big_blind_range, profile)?;
     training.train_iterations(iterations);
     Ok(training.solver_result())
 }
 
 #[derive(Debug, Clone)]
-struct RiverGameDefinition {
+struct TurnGameDefinition {
     profile: AbstractionProfile,
-    outcomes: Vec<RiverChanceOutcome>,
+    outcomes: Vec<TurnChanceOutcome>,
 }
 
-impl RiverGameDefinition {
+impl TurnGameDefinition {
     fn new(
-        spot: ScriptedRiverSpot,
+        spot: ScriptedTurnSpot,
         button_range: Range,
         big_blind_range: Range,
         profile: AbstractionProfile,
-    ) -> Result<Self, RiverSolveError> {
-        let board_cards = spot.board_cards();
-        let board_mask = gto_core::CardMask::from_cards(board_cards);
+    ) -> Result<Self, TurnSolveError> {
+        let board_mask = CardMask::from_cards(spot.board_cards());
         let button_range = button_range.without_dead_cards(board_mask);
         let big_blind_range = big_blind_range.without_dead_cards(board_mask);
 
@@ -381,7 +354,7 @@ impl RiverGameDefinition {
                 }
 
                 let state = spot.build_state(button_hole_cards, big_blind_hole_cards)?;
-                outcomes.push(RiverChanceOutcome {
+                outcomes.push(TurnChanceOutcome {
                     hole_cards: [button_hole_cards, big_blind_hole_cards],
                     state,
                 });
@@ -389,7 +362,7 @@ impl RiverGameDefinition {
         }
 
         if outcomes.is_empty() {
-            return Err(RiverSolveError::NoValidDeals);
+            return Err(TurnSolveError::NoValidDeals);
         }
 
         Ok(Self { profile, outcomes })
@@ -397,20 +370,20 @@ impl RiverGameDefinition {
 }
 
 #[derive(Debug, Clone)]
-struct RiverChanceOutcome {
+struct TurnChanceOutcome {
     hole_cards: [HoleCards; 2],
     state: HoldemHandState,
 }
 
 #[derive(Debug, Clone)]
-struct RiverGameState {
-    definition: Rc<RiverGameDefinition>,
-    active: Option<RiverChanceOutcome>,
+struct TurnGameState {
+    definition: Rc<TurnGameDefinition>,
+    active: Option<TurnChanceOutcome>,
     history: Vec<AbstractAction>,
 }
 
-impl RiverGameState {
-    fn root(definition: Rc<RiverGameDefinition>) -> Self {
+impl TurnGameState {
+    fn root(definition: Rc<TurnGameDefinition>) -> Self {
         Self {
             definition,
             active: None,
@@ -419,7 +392,7 @@ impl RiverGameState {
     }
 }
 
-impl ExtensiveGameState for RiverGameState {
+impl ExtensiveGameState for TurnGameState {
     type Action = AbstractAction;
     type InfoSet = HoldemInfoSetKey;
 
@@ -446,24 +419,9 @@ impl ExtensiveGameState for RiverGameState {
             };
         }
 
-        let active = self.active.as_ref().expect("active river state should exist");
+        let active = self.active.as_ref().expect("active turn state should exist");
         match active.state.phase() {
-            HandPhase::Terminal { outcome } => {
-                let button_snapshot = active.state.player(Player::Button);
-                let big_blind_snapshot = active.state.player(Player::BigBlind);
-                let (button_payout, big_blind_payout) = match outcome {
-                    HandOutcome::Uncontested { payout, .. } | HandOutcome::Showdown { payout, .. } => {
-                        (payout.player_one as f64, payout.player_two as f64)
-                    }
-                };
-
-                GameNode::Terminal {
-                    utilities: [
-                        button_payout - button_snapshot.total_contribution as f64,
-                        big_blind_payout - big_blind_snapshot.total_contribution as f64,
-                    ],
-                }
-            }
+            HandPhase::Terminal { outcome } => terminal_node(&active.state, outcome),
             HandPhase::BettingRound { actor, .. } => {
                 let hole_cards = active.hole_cards[actor.index()];
                 let infoset = HoldemInfoSetKey::from_state(
@@ -473,7 +431,7 @@ impl ExtensiveGameState for RiverGameState {
                     self.history.clone(),
                 );
                 let actions = abstract_actions(&active.state, &self.definition.profile)
-                    .expect("river abstraction should produce legal actions");
+                    .expect("turn abstraction should produce legal actions");
 
                 GameNode::Decision {
                     player: actor.index(),
@@ -481,13 +439,39 @@ impl ExtensiveGameState for RiverGameState {
                     actions,
                 }
             }
-            phase => panic!("river solver encountered unexpected phase {phase:?}"),
+            HandPhase::AwaitingBoard { next_street: Street::River } => {
+                let river_cards = available_river_cards(active);
+                let probability = 1.0 / river_cards.len() as f64;
+                GameNode::Chance {
+                    outcomes: river_cards
+                        .into_iter()
+                        .map(|river| {
+                            let mut next_state = active.state.clone();
+                            next_state
+                                .deal_river(river)
+                                .expect("river card should be legal for turn chance expansion");
+                            (
+                                Self {
+                                    definition: Rc::clone(&self.definition),
+                                    active: Some(TurnChanceOutcome {
+                                        hole_cards: active.hole_cards,
+                                        state: next_state,
+                                    }),
+                                    history: self.history.clone(),
+                                },
+                                probability,
+                            )
+                        })
+                        .collect(),
+                }
+            }
+            phase => panic!("turn solver encountered unexpected phase {phase:?}"),
         }
     }
 
     fn next_state(&self, action: &Self::Action) -> Self {
         let mut next = self.clone();
-        let active = next.active.as_mut().expect("active river state should exist");
+        let active = next.active.as_mut().expect("active turn state should exist");
         active
             .state
             .apply_action(action.to_player_action())
@@ -498,78 +482,78 @@ impl ExtensiveGameState for RiverGameState {
 }
 
 #[derive(Debug)]
-pub enum RiverSolveError {
+pub enum TurnSolveError {
     NoValidDeals,
     SpotAlreadyTerminal,
     UnexpectedPhase(HandPhase),
     State(HoldemStateError),
 }
 
-impl Display for RiverSolveError {
+impl Display for TurnSolveError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoValidDeals => formatter.write_str("river spot has no valid non-overlapping deals"),
-            Self::SpotAlreadyTerminal => formatter.write_str("river spot is already terminal"),
-            Self::UnexpectedPhase(phase) => write!(formatter, "river spot ended in unexpected phase {phase:?}"),
+            Self::NoValidDeals => formatter.write_str("turn spot has no valid non-overlapping deals"),
+            Self::SpotAlreadyTerminal => formatter.write_str("turn spot is already terminal"),
+            Self::UnexpectedPhase(phase) => write!(formatter, "turn spot ended in unexpected phase {phase:?}"),
             Self::State(error) => write!(formatter, "{error}"),
         }
     }
 }
 
-impl Error for RiverSolveError {}
+impl Error for TurnSolveError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RiverArtifactError {
+pub enum TurnArtifactError {
     UnsupportedFormatVersion { expected: u32, actual: u32 },
     Encode(String),
     Decode(String),
 }
 
-impl Display for RiverArtifactError {
+impl Display for TurnArtifactError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedFormatVersion { expected, actual } => write!(
                 formatter,
-                "unsupported river artifact format version {actual}; expected {expected}"
+                "unsupported turn artifact format version {actual}; expected {expected}"
             ),
-            Self::Encode(error) => write!(formatter, "failed to encode river artifact: {error}"),
-            Self::Decode(error) => write!(formatter, "failed to decode river artifact: {error}"),
+            Self::Encode(error) => write!(formatter, "failed to encode turn artifact: {error}"),
+            Self::Decode(error) => write!(formatter, "failed to decode turn artifact: {error}"),
         }
     }
 }
 
-impl Error for RiverArtifactError {}
+impl Error for TurnArtifactError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RiverCheckpointError {
+pub enum TurnCheckpointError {
     UnsupportedFormatVersion { expected: u32, actual: u32 },
     Encode(String),
     Decode(String),
 }
 
-impl Display for RiverCheckpointError {
+impl Display for TurnCheckpointError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedFormatVersion { expected, actual } => write!(
                 formatter,
-                "unsupported river checkpoint format version {actual}; expected {expected}"
+                "unsupported turn checkpoint format version {actual}; expected {expected}"
             ),
-            Self::Encode(error) => write!(formatter, "failed to encode river checkpoint: {error}"),
-            Self::Decode(error) => write!(formatter, "failed to decode river checkpoint: {error}"),
+            Self::Encode(error) => write!(formatter, "failed to encode turn checkpoint: {error}"),
+            Self::Decode(error) => write!(formatter, "failed to decode turn checkpoint: {error}"),
         }
     }
 }
 
-impl Error for RiverCheckpointError {}
+impl Error for TurnCheckpointError {}
 
 #[derive(Debug)]
-pub enum RiverTrainingError {
-    Solve(RiverSolveError),
-    Checkpoint(RiverCheckpointError),
+pub enum TurnTrainingError {
+    Solve(TurnSolveError),
+    Checkpoint(TurnCheckpointError),
     Cfr(CfrCheckpointError),
 }
 
-impl Display for RiverTrainingError {
+impl Display for TurnTrainingError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Solve(error) => write!(formatter, "{error}"),
@@ -579,36 +563,69 @@ impl Display for RiverTrainingError {
     }
 }
 
-impl Error for RiverTrainingError {}
+impl Error for TurnTrainingError {}
 
-impl From<RiverSolveError> for RiverTrainingError {
-    fn from(value: RiverSolveError) -> Self {
+impl From<TurnSolveError> for TurnTrainingError {
+    fn from(value: TurnSolveError) -> Self {
         Self::Solve(value)
     }
 }
 
-impl From<RiverCheckpointError> for RiverTrainingError {
-    fn from(value: RiverCheckpointError) -> Self {
+impl From<TurnCheckpointError> for TurnTrainingError {
+    fn from(value: TurnCheckpointError) -> Self {
         Self::Checkpoint(value)
     }
 }
 
-impl From<CfrCheckpointError> for RiverTrainingError {
+impl From<CfrCheckpointError> for TurnTrainingError {
     fn from(value: CfrCheckpointError) -> Self {
         Self::Cfr(value)
     }
 }
 
+fn terminal_node(
+    state: &HoldemHandState,
+    outcome: HandOutcome,
+) -> GameNode<AbstractAction, HoldemInfoSetKey, TurnGameState> {
+    let button_snapshot = state.player(Player::Button);
+    let big_blind_snapshot = state.player(Player::BigBlind);
+    let (button_payout, big_blind_payout) = match outcome {
+        HandOutcome::Uncontested { payout, .. } | HandOutcome::Showdown { payout, .. } => {
+            (payout.player_one as f64, payout.player_two as f64)
+        }
+    };
+
+    GameNode::Terminal {
+        utilities: [
+            button_payout - button_snapshot.total_contribution as f64,
+            big_blind_payout - big_blind_snapshot.total_contribution as f64,
+        ],
+    }
+}
+
+fn available_river_cards(active: &TurnChanceOutcome) -> Vec<Card> {
+    let dead_cards = active.state.board().mask().union(
+        active.hole_cards[0]
+            .mask()
+            .union(active.hole_cards[1].mask()),
+    );
+
+    (0..52)
+        .filter_map(Card::from_index)
+        .filter(|card| !dead_cards.contains(*card))
+        .collect()
+}
+
 fn snapshot_to_entries(
     strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
-) -> Vec<RiverStrategyEntry> {
+) -> Vec<TurnStrategyEntry> {
     strategy
         .into_iter()
-        .map(|(infoset, actions)| RiverStrategyEntry {
+        .map(|(infoset, actions)| TurnStrategyEntry {
             infoset,
             actions: actions
                 .into_iter()
-                .map(|(action, probability)| RiverActionProbability {
+                .map(|(action, probability)| TurnActionProbability {
                     action,
                     probability,
                 })
@@ -618,7 +635,7 @@ fn snapshot_to_entries(
 }
 
 fn entries_to_snapshot(
-    entries: &[RiverStrategyEntry],
+    entries: &[TurnStrategyEntry],
 ) -> HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>> {
     entries
         .iter()
@@ -635,7 +652,7 @@ fn entries_to_snapshot(
         .collect()
 }
 
-fn sort_strategy_entries(entries: &mut [RiverStrategyEntry]) {
+fn sort_strategy_entries(entries: &mut [TurnStrategyEntry]) {
     for entry in entries.iter_mut() {
         entry.actions.sort_by(|left, right| {
             stable_action_key(left.action).cmp(&stable_action_key(right.action))
@@ -696,7 +713,7 @@ fn stable_action_key(action: AbstractAction) -> String {
 
 #[cfg(test)]
 mod tests {
-    use gto_core::{HoldemStateError, Player, PlayerAction, Range};
+    use gto_core::{HoldemStateError, Player, PlayerAction, Range, Street};
 
     use crate::{
         AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
@@ -704,11 +721,11 @@ mod tests {
     };
 
     use super::{
-        RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile,
-        RiverTrainingSession, ScriptedRiverSpot, solve_river_spot,
+        ScriptedTurnSpot, TurnSolveError, TurnStrategyArtifact, TurnTrainingCheckpoint,
+        TurnTrainingProfile, TurnTrainingSession, solve_turn_spot,
     };
 
-    fn river_profile_without_raises() -> AbstractionProfile {
+    fn turn_profile_without_raises() -> AbstractionProfile {
         let preflop = StreetProfile {
             opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
             raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
@@ -722,8 +739,8 @@ mod tests {
         AbstractionProfile::new(preflop, postflop.clone(), postflop.clone(), postflop)
     }
 
-    fn sample_spot() -> ScriptedRiverSpot {
-        ScriptedRiverSpot {
+    fn sample_spot() -> ScriptedTurnSpot {
+        ScriptedTurnSpot {
             config: gto_core::HoldemConfig::default(),
             preflop_actions: vec![PlayerAction::Call],
             flop: [
@@ -733,32 +750,30 @@ mod tests {
             ],
             flop_actions: vec![PlayerAction::Check, PlayerAction::Check],
             turn: "3h".parse().unwrap(),
-            turn_actions: vec![PlayerAction::Check, PlayerAction::Check],
-            river: "2d".parse().unwrap(),
-            river_prefix_actions: vec![PlayerAction::BetTo(100)],
+            turn_prefix_actions: vec![PlayerAction::Check],
         }
     }
 
     #[test]
-    fn scripted_spot_reaches_a_river_decision() {
+    fn scripted_spot_reaches_a_turn_decision() {
         let spot = sample_spot();
         let state = spot
             .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
             .unwrap();
 
-        assert_eq!(state.street(), gto_core::Street::River);
+        assert_eq!(state.street(), Street::Turn);
         assert_eq!(state.current_actor(), Some(Player::Button));
     }
 
     #[test]
-    fn river_solver_returns_normalized_root_strategy() {
+    fn turn_solver_returns_normalized_turn_strategy() {
         let spot = sample_spot();
-        let result = solve_river_spot(
+        let result = solve_turn_spot(
             spot.clone(),
             "QhJc".parse::<Range>().unwrap(),
             "KhKd".parse::<Range>().unwrap(),
-            river_profile_without_raises(),
-            2_000,
+            turn_profile_without_raises(),
+            20,
         )
         .unwrap();
         let state = spot
@@ -778,37 +793,31 @@ mod tests {
     }
 
     #[test]
-    fn river_solver_learns_to_fold_a_dead_hand_facing_a_bet() {
+    fn turn_solver_contains_river_infosets_after_turn_check() {
         let spot = sample_spot();
-        let result = solve_river_spot(
+        let result = solve_turn_spot(
             spot.clone(),
             "QhJc".parse::<Range>().unwrap(),
             "KhKd".parse::<Range>().unwrap(),
-            river_profile_without_raises(),
-            5_000,
+            turn_profile_without_raises(),
+            20,
         )
         .unwrap();
-        let state = spot
+        let mut state = spot
             .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
             .unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_river("2d".parse().unwrap()).unwrap();
         let infoset = HoldemInfoSetKey::from_state(
-            Player::Button,
-            "QhJc".parse().unwrap(),
+            Player::BigBlind,
+            "KhKd".parse().unwrap(),
             &state,
-            Vec::new(),
+            vec![AbstractAction::Check],
         );
 
         let strategy = result.strategy_for(&infoset).unwrap();
-        let fold_probability = strategy
-            .iter()
-            .find_map(|(action, probability)| match action {
-                AbstractAction::Fold => Some(*probability),
-                _ => None,
-            })
-            .unwrap_or(0.0);
-
-        assert!(fold_probability > 0.95, "unexpected fold probability {fold_probability}");
-        assert_eq!(result.choose_action_max(&infoset), Some(AbstractAction::Fold));
+        let probability_sum = strategy.iter().map(|(_, probability)| probability).sum::<f64>();
+        assert!((probability_sum - 1.0).abs() < 1e-9);
     }
 
     #[test]
@@ -820,24 +829,24 @@ mod tests {
             .build_state("AsKd".parse().unwrap(), "QcJh".parse().unwrap())
             .expect_err("spot should reject duplicate cards");
 
-        assert!(matches!(error, super::RiverSolveError::State(HoldemStateError::CardAlreadyInUse { .. })));
+        assert!(matches!(error, TurnSolveError::State(HoldemStateError::CardAlreadyInUse { .. })));
     }
 
     #[test]
-    fn river_artifact_json_round_trips_without_losing_strategy_queries() {
+    fn turn_artifact_json_round_trips_without_losing_strategy_queries() {
         let spot = sample_spot();
         let button_range: Range = "QhJc".parse().unwrap();
         let big_blind_range: Range = "KhKd".parse().unwrap();
-        let profile = river_profile_without_raises();
-        let result = solve_river_spot(
+        let profile = turn_profile_without_raises();
+        let result = solve_turn_spot(
             spot.clone(),
             button_range.clone(),
             big_blind_range.clone(),
             profile.clone(),
-            2_000,
+            20,
         )
         .unwrap();
-        let artifact = result.into_artifact(
+        let artifact = result.clone().into_artifact(
             spot.clone(),
             button_range,
             big_blind_range,
@@ -845,7 +854,7 @@ mod tests {
         );
 
         let encoded = artifact.to_json_string().unwrap();
-        let decoded = RiverStrategyArtifact::from_json_str(&encoded).unwrap();
+        let decoded = TurnStrategyArtifact::from_json_str(&encoded).unwrap();
         let restored = decoded.to_solver_result().unwrap();
         let state = spot
             .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
@@ -859,22 +868,22 @@ mod tests {
 
         assert_eq!(
             restored.choose_action_max(&infoset),
-            Some(AbstractAction::Fold)
+            result.choose_action_max(&infoset)
         );
     }
 
     #[test]
-    fn river_artifact_rejects_unknown_format_versions() {
+    fn turn_artifact_rejects_unknown_format_versions() {
         let spot = sample_spot();
         let button_range: Range = "QhJc".parse().unwrap();
         let big_blind_range: Range = "KhKd".parse().unwrap();
-        let profile = river_profile_without_raises();
-        let result = solve_river_spot(
+        let profile = turn_profile_without_raises();
+        let result = solve_turn_spot(
             spot.clone(),
             button_range.clone(),
             big_blind_range.clone(),
             profile.clone(),
-            100,
+            5,
         )
         .unwrap();
         let mut artifact = result.into_artifact(spot, button_range, big_blind_range, profile);
@@ -884,42 +893,42 @@ mod tests {
         assert_eq!(
             error.to_string(),
             format!(
-                "unsupported river artifact format version {}; expected {}",
-                RiverStrategyArtifact::FORMAT_VERSION + 1,
-                RiverStrategyArtifact::FORMAT_VERSION,
+                "unsupported turn artifact format version {}; expected {}",
+                TurnStrategyArtifact::FORMAT_VERSION + 1,
+                TurnStrategyArtifact::FORMAT_VERSION,
             )
         );
     }
 
     #[test]
-    fn river_training_session_resume_matches_uninterrupted_training() {
+    fn turn_training_session_resume_matches_uninterrupted_training() {
         let spot = sample_spot();
         let button_range: Range = "QhJc".parse().unwrap();
         let big_blind_range: Range = "KhKd".parse().unwrap();
-        let profile = river_profile_without_raises();
+        let profile = turn_profile_without_raises();
 
-        let mut uninterrupted = RiverTrainingSession::new(
+        let mut uninterrupted = TurnTrainingSession::new(
             spot.clone(),
             button_range.clone(),
             big_blind_range.clone(),
             profile.clone(),
         )
         .unwrap();
-        uninterrupted.train_iterations(2_000);
+        uninterrupted.train_iterations(10);
 
-        let mut resumed = RiverTrainingSession::new(
+        let mut resumed = TurnTrainingSession::new(
             spot.clone(),
             button_range.clone(),
             big_blind_range.clone(),
             profile.clone(),
         )
         .unwrap();
-        resumed.train_iterations(1_000);
+        resumed.train_iterations(5);
         let checkpoint = resumed.checkpoint();
         let json = checkpoint.to_json_string().unwrap();
-        let decoded = RiverTrainingCheckpoint::from_json_str(&json).unwrap();
-        let mut resumed = RiverTrainingSession::from_checkpoint(decoded).unwrap();
-        resumed.train_iterations(1_000);
+        let decoded = TurnTrainingCheckpoint::from_json_str(&json).unwrap();
+        let mut resumed = TurnTrainingSession::from_checkpoint(decoded).unwrap();
+        resumed.train_iterations(5);
 
         let state = spot
             .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
@@ -938,9 +947,9 @@ mod tests {
     }
 
     #[test]
-    fn river_training_profile_alias_exposes_training_schedule() {
-        assert!(RiverTrainingProfile::Smoke.total_iterations() < RiverTrainingProfile::Dev.total_iterations());
-        assert!(RiverTrainingProfile::Dev.total_iterations() < RiverTrainingProfile::Full.total_iterations());
-        assert!(RiverTrainingProfile::Smoke.checkpoint_interval() <= RiverTrainingProfile::Smoke.total_iterations());
+    fn turn_training_profile_alias_exposes_training_schedule() {
+        assert!(TurnTrainingProfile::Smoke.total_iterations() < TurnTrainingProfile::Dev.total_iterations());
+        assert!(TurnTrainingProfile::Dev.total_iterations() < TurnTrainingProfile::Full.total_iterations());
+        assert!(TurnTrainingProfile::Smoke.checkpoint_interval() <= TurnTrainingProfile::Smoke.total_iterations());
     }
 }

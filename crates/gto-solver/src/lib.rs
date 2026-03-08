@@ -5,7 +5,9 @@ mod abstraction;
 mod cfr;
 mod kuhn;
 mod river;
+mod training;
 mod tree;
+mod turn;
 
 use gto_core::{CoreBuildInfo, HoldemHandState, HoldemStateError, PlayerAction, build_info as core_build_info};
 
@@ -24,7 +26,14 @@ pub use river::{
     RiverTrainingError, RiverTrainingProfile, RiverTrainingSession, ScriptedRiverSpot,
     solve_river_spot,
 };
+pub use training::TrainingProfile;
 pub use tree::{PublicTree, PublicTreeEdge, PublicTreeNode, PublicTreeNodeKind, build_public_tree};
+pub use turn::{
+    ScriptedTurnSpot, TurnActionProbability, TurnArtifactError, TurnCheckpointError,
+    TurnSolveError, TurnSolverResult, TurnStrategyArtifact, TurnStrategyEntry,
+    TurnTrainingCheckpoint, TurnTrainingError, TurnTrainingProfile, TurnTrainingSession,
+    solve_turn_spot,
+};
 
 /// Static build metadata for the solver crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

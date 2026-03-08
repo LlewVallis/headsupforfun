@@ -9,8 +9,9 @@ use gto_core::{
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
     RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile, RiverTrainingSession,
-    ScriptedRiverSpot, SolverProfile, StreetProfile, StubBot, abstract_actions,
-    solve_river_spot,
+    ScriptedRiverSpot, ScriptedTurnSpot, SolverProfile, StreetProfile, StubBot,
+    TurnStrategyArtifact, TurnTrainingCheckpoint, TurnTrainingProfile, TurnTrainingSession,
+    abstract_actions, solve_river_spot, solve_turn_spot,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +42,14 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
         Some("train-river-demo") => {
             let options = parse_river_training_args(&args[1..]).map_err(io::Error::other)?;
             run_train_river_demo(&mut output, &options)
+        }
+        Some("turn-demo") => {
+            let options = parse_turn_demo_args(&args[1..]).map_err(io::Error::other)?;
+            run_turn_demo(&mut input, &mut output, &options)
+        }
+        Some("train-turn-demo") => {
+            let options = parse_turn_training_args(&args[1..]).map_err(io::Error::other)?;
+            run_train_turn_demo(&mut output, &options)
         }
         _ => run_session(&mut input, &mut output, CliConfig::default()),
     }
@@ -132,6 +141,42 @@ impl Default for RiverTrainingOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct TurnDemoOptions {
+    artifact_path: PathBuf,
+    solve_if_missing: bool,
+    write_artifact_path: Option<PathBuf>,
+    no_play: bool,
+}
+
+impl Default for TurnDemoOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_turn_demo_artifact_path(),
+            solve_if_missing: true,
+            write_artifact_path: None,
+            no_play: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TurnTrainingOptions {
+    artifact_path: PathBuf,
+    checkpoint_path: PathBuf,
+    profile: TurnTrainingProfile,
+}
+
+impl Default for TurnTrainingOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_turn_demo_artifact_path(),
+            checkpoint_path: default_turn_demo_checkpoint_path(),
+            profile: TurnTrainingProfile::Smoke,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct RiverDemoScenario {
     spot: ScriptedRiverSpot,
     button_range: Range,
@@ -213,6 +258,107 @@ impl RiverDemoScenario {
             ));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TurnDemoScenario {
+    spot: ScriptedTurnSpot,
+    button_range: Range,
+    big_blind_range: Range,
+    profile: AbstractionProfile,
+    button_hole_cards: HoleCards,
+    big_blind_hole_cards: HoleCards,
+    river_card: gto_core::Card,
+    artifact_iterations: u64,
+}
+
+impl TurnDemoScenario {
+    fn default() -> Self {
+        let preflop = StreetProfile {
+            opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
+            raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
+            include_all_in: false,
+        };
+        let postflop = StreetProfile {
+            opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+            raise_sizes: vec![],
+            include_all_in: false,
+        };
+
+        Self {
+            spot: ScriptedTurnSpot {
+                config: HoldemConfig::default(),
+                preflop_actions: vec![PlayerAction::Call],
+                flop: [
+                    "Kc".parse().unwrap(),
+                    "8d".parse().unwrap(),
+                    "4s".parse().unwrap(),
+                ],
+                flop_actions: vec![PlayerAction::Check, PlayerAction::Check],
+                turn: "3h".parse().unwrap(),
+                turn_prefix_actions: vec![PlayerAction::BetTo(100)],
+            },
+            button_range: "8c7c".parse().unwrap(),
+            big_blind_range: "AhQh".parse().unwrap(),
+            profile: AbstractionProfile::new(
+                preflop,
+                postflop.clone(),
+                postflop.clone(),
+                postflop,
+            ),
+            button_hole_cards: "8c7c".parse().unwrap(),
+            big_blind_hole_cards: "AhQh".parse().unwrap(),
+            river_card: "2d".parse().unwrap(),
+            artifact_iterations: 100,
+        }
+    }
+
+    fn build_artifact(&self, iterations: u64) -> io::Result<TurnStrategyArtifact> {
+        let result = solve_turn_spot(
+            self.spot.clone(),
+            self.button_range.clone(),
+            self.big_blind_range.clone(),
+            self.profile.clone(),
+            iterations,
+        )
+        .map_err(io::Error::other)?;
+
+        Ok(result.into_artifact(
+            self.spot.clone(),
+            self.button_range.clone(),
+            self.big_blind_range.clone(),
+            self.profile.clone(),
+        ))
+    }
+
+    fn validate_artifact(&self, artifact: &TurnStrategyArtifact) -> io::Result<()> {
+        if artifact.spot != self.spot
+            || artifact.button_range != self.button_range
+            || artifact.big_blind_range != self.big_blind_range
+            || artifact.profile != self.profile
+        {
+            return Err(io::Error::other(
+                "turn demo artifact does not match the built-in scenario",
+            ));
+        }
+        Ok(())
+    }
+
+    fn training_iterations(&self, profile: TurnTrainingProfile) -> u64 {
+        match profile {
+            TurnTrainingProfile::Smoke => 100,
+            TurnTrainingProfile::Dev => 400,
+            TurnTrainingProfile::Full => 1_000,
+        }
+    }
+
+    fn checkpoint_interval(&self, profile: TurnTrainingProfile) -> u64 {
+        match profile {
+            TurnTrainingProfile::Smoke => 25,
+            TurnTrainingProfile::Dev => 100,
+            TurnTrainingProfile::Full => 250,
+        }
     }
 }
 
@@ -310,6 +456,108 @@ fn run_river_demo<R: BufRead, W: Write>(
     }
 }
 
+fn run_turn_demo<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    options: &TurnDemoOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+
+    let scenario = TurnDemoScenario::default();
+    let (artifact, artifact_source) = load_or_build_turn_demo_artifact(&scenario, options)?;
+    scenario.validate_artifact(&artifact)?;
+
+    if let Some(path) = &options.write_artifact_path {
+        write_turn_artifact(path, &artifact)?;
+        writeln!(output, "Wrote turn artifact to {}", path.display())?;
+    }
+
+    if options.no_play {
+        writeln!(
+            output,
+            "Turn demo artifact ready ({artifact_source}, {} infosets, {} iterations).",
+            artifact.entries.len(),
+            artifact.iterations,
+        )?;
+        return Ok(());
+    }
+
+    let strategy = artifact.to_solver_result().map_err(io::Error::other)?;
+    let mut state = scenario
+        .spot
+        .build_state(scenario.button_hole_cards, scenario.big_blind_hole_cards)
+        .map_err(io::Error::other)?;
+    let human_role = Player::Button;
+    let bot_role = Player::BigBlind;
+    let mut public_history = Vec::new();
+
+    writeln!(output, "\nTurn Demo")?;
+    writeln!(output, "source: {artifact_source}")?;
+    writeln!(output, "board: {}", format_board(&state))?;
+    writeln!(
+        output,
+        "you ({human_role}): {}",
+        format_hole_cards(scenario.button_hole_cards),
+    )?;
+    writeln!(output, "bot ({bot_role}): stack={}", state.player(bot_role).stack)?;
+    writeln!(
+        output,
+        "pot: {} | scripted history: call / check-check / bot bet 100 on turn",
+        state.pot()
+    )?;
+
+    loop {
+        match state.phase() {
+            HandPhase::BettingRound { actor, .. } => {
+                let actions = abstract_actions(&state, &scenario.profile).map_err(io::Error::other)?;
+                if actor == human_role {
+                    if !handle_human_abstract_turn(
+                        input,
+                        output,
+                        &mut state,
+                        &actions,
+                        &mut public_history,
+                    )? {
+                        return Ok(());
+                    }
+                } else {
+                    let infoset = HoldemInfoSetKey::from_state(
+                        bot_role,
+                        scenario.big_blind_hole_cards,
+                        &state,
+                        public_history.clone(),
+                    );
+                    let action = strategy.choose_action_max(&infoset).ok_or_else(|| {
+                        io::Error::other("turn strategy artifact had no action for the bot infoset")
+                    })?;
+                    writeln!(output, "Bot ({bot_role}) -> {}", describe_abstract_action(action))?;
+                    state
+                        .apply_action(action.to_player_action())
+                        .map_err(io::Error::other)?;
+                    public_history.push(action);
+                }
+            }
+            HandPhase::AwaitingBoard {
+                next_street: gto_core::Street::River,
+            } => {
+                state
+                    .deal_river(scenario.river_card)
+                    .map_err(io::Error::other)?;
+                writeln!(output, "River: {}", format_board(&state))?;
+            }
+            HandPhase::AwaitingBoard { .. } => {
+                return Err(io::Error::other(
+                    "turn demo unexpectedly requested non-river board cards",
+                ));
+            }
+            HandPhase::Terminal { outcome } => {
+                render_outcome(output, &state, human_role, outcome)?;
+                return Ok(());
+            }
+        }
+    }
+}
+
 fn play_single_hand<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -391,6 +639,42 @@ fn parse_river_demo_args(args: &[String]) -> Result<RiverDemoOptions, &'static s
     Ok(options)
 }
 
+fn parse_turn_demo_args(args: &[String]) -> Result<TurnDemoOptions, &'static str> {
+    let mut options = TurnDemoOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            "--write-artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--write-artifact`");
+                };
+                options.write_artifact_path = Some(PathBuf::from(path));
+            }
+            "--solve" => {
+                options.solve_if_missing = true;
+            }
+            "--artifact-only" => {
+                options.solve_if_missing = false;
+            }
+            "--no-play" => {
+                options.no_play = true;
+            }
+            _ => return Err("unknown turn-demo option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
 fn parse_river_training_args(args: &[String]) -> Result<RiverTrainingOptions, &'static str> {
     let mut options = RiverTrainingOptions::default();
     let mut index = 0usize;
@@ -423,6 +707,45 @@ fn parse_river_training_args(args: &[String]) -> Result<RiverTrainingOptions, &'
                 };
             }
             _ => return Err("unknown train-river-demo option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
+fn parse_turn_training_args(args: &[String]) -> Result<TurnTrainingOptions, &'static str> {
+    let mut options = TurnTrainingOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            "--checkpoint" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--checkpoint`");
+                };
+                options.checkpoint_path = PathBuf::from(path);
+            }
+            "--profile" => {
+                index += 1;
+                let Some(profile_name) = args.get(index) else {
+                    return Err("expected `smoke`, `dev`, or `full` after `--profile`");
+                };
+                options.profile = match profile_name.as_str() {
+                    "smoke" => TurnTrainingProfile::Smoke,
+                    "dev" => TurnTrainingProfile::Dev,
+                    "full" => TurnTrainingProfile::Full,
+                    _ => return Err("unknown training profile"),
+                };
+            }
+            _ => return Err("unknown train-turn-demo option"),
         }
         index += 1;
     }
@@ -487,11 +810,88 @@ fn run_train_river_demo<W: Write>(
     Ok(())
 }
 
+fn run_train_turn_demo<W: Write>(
+    output: &mut W,
+    options: &TurnTrainingOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+
+    let scenario = TurnDemoScenario::default();
+    let mut session = match read_turn_checkpoint(&options.checkpoint_path) {
+        Ok(checkpoint) => {
+            writeln!(
+                output,
+                "Resuming turn demo training from {}",
+                options.checkpoint_path.display()
+            )?;
+            TurnTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            writeln!(output, "Starting fresh turn demo training")?;
+            TurnTrainingSession::new(
+                scenario.spot.clone(),
+                scenario.button_range.clone(),
+                scenario.big_blind_range.clone(),
+                scenario.profile.clone(),
+            )
+            .map_err(io::Error::other)?
+        }
+        Err(error) => return Err(error),
+    };
+
+    let target_iterations = scenario.training_iterations(options.profile);
+    let checkpoint_interval = scenario.checkpoint_interval(options.profile);
+    while session.iterations() < target_iterations {
+        let remaining = target_iterations - session.iterations();
+        let batch = remaining.min(checkpoint_interval);
+        session.train_iterations(batch);
+        write_turn_checkpoint(&options.checkpoint_path, &session.checkpoint())?;
+        writeln!(
+            output,
+            "checkpoint: {} / {} iterations -> {}",
+            session.iterations(),
+            target_iterations,
+            options.checkpoint_path.display()
+        )?;
+    }
+
+    let artifact = session.strategy_artifact();
+    write_turn_artifact(&options.artifact_path, &artifact)?;
+    writeln!(
+        output,
+        "artifact: {} iterations -> {}",
+        artifact.iterations,
+        options.artifact_path.display()
+    )?;
+
+    Ok(())
+}
+
 fn load_or_build_river_demo_artifact(
     scenario: &RiverDemoScenario,
     options: &RiverDemoOptions,
 ) -> io::Result<(RiverStrategyArtifact, String)> {
     match read_river_artifact(&options.artifact_path) {
+        Ok(artifact) => Ok((
+            artifact,
+            format!("loaded {}", options.artifact_path.display()),
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound && options.solve_if_missing => Ok((
+            scenario.build_artifact(scenario.artifact_iterations)?,
+            format!(
+                "generated inline (default artifact missing at {})",
+                options.artifact_path.display()
+            ),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn load_or_build_turn_demo_artifact(
+    scenario: &TurnDemoScenario,
+    options: &TurnDemoOptions,
+) -> io::Result<(TurnStrategyArtifact, String)> {
+    match read_turn_artifact(&options.artifact_path) {
         Ok(artifact) => Ok((
             artifact,
             format!("loaded {}", options.artifact_path.display()),
@@ -520,6 +920,19 @@ fn write_river_artifact(path: &Path, artifact: &RiverStrategyArtifact) -> io::Re
     fs::write(path, encoded)
 }
 
+fn read_turn_artifact(path: &Path) -> io::Result<TurnStrategyArtifact> {
+    let encoded = fs::read_to_string(path)?;
+    TurnStrategyArtifact::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_turn_artifact(path: &Path, artifact: &TurnStrategyArtifact) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = artifact.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
 fn read_river_checkpoint(path: &Path) -> io::Result<RiverTrainingCheckpoint> {
     let encoded = fs::read_to_string(path)?;
     RiverTrainingCheckpoint::from_json_str(&encoded).map_err(io::Error::other)
@@ -533,8 +946,25 @@ fn write_river_checkpoint(path: &Path, checkpoint: &RiverTrainingCheckpoint) -> 
     fs::write(path, encoded)
 }
 
+fn read_turn_checkpoint(path: &Path) -> io::Result<TurnTrainingCheckpoint> {
+    let encoded = fs::read_to_string(path)?;
+    TurnTrainingCheckpoint::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_turn_checkpoint(path: &Path, checkpoint: &TurnTrainingCheckpoint) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = checkpoint.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
 fn default_river_demo_artifact_path() -> PathBuf {
     workspace_root().join("fixtures").join("strategies").join("river_demo.json")
+}
+
+fn default_turn_demo_artifact_path() -> PathBuf {
+    workspace_root().join("fixtures").join("strategies").join("turn_demo.json")
 }
 
 fn default_river_demo_checkpoint_path() -> PathBuf {
@@ -542,6 +972,13 @@ fn default_river_demo_checkpoint_path() -> PathBuf {
         .join("fixtures")
         .join("checkpoints")
         .join("river_demo.checkpoint.json")
+}
+
+fn default_turn_demo_checkpoint_path() -> PathBuf {
+    workspace_root()
+        .join("fixtures")
+        .join("checkpoints")
+        .join("turn_demo.checkpoint.json")
 }
 
 fn workspace_root() -> PathBuf {
@@ -952,10 +1389,12 @@ fn draw_card(deck: &mut Deck) -> io::Result<gto_core::Card> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CliConfig, RiverDemoOptions, RiverDemoScenario, default_river_demo_artifact_path,
-        run_river_demo, run_session, run_train_river_demo, startup_banner, write_river_artifact,
+        CliConfig, RiverDemoOptions, RiverDemoScenario, TurnDemoOptions, TurnDemoScenario,
+        default_river_demo_artifact_path, default_turn_demo_artifact_path, run_river_demo,
+        run_session, run_train_river_demo, run_train_turn_demo, run_turn_demo, startup_banner,
+        write_river_artifact, write_turn_artifact,
     };
-    use gto_solver::RiverTrainingProfile;
+    use gto_solver::{RiverTrainingProfile, TurnTrainingProfile};
     use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
@@ -1101,6 +1540,84 @@ mod tests {
 
         let transcript = String::from_utf8(output).unwrap();
         assert!(transcript.contains("artifact: 2000 iterations"));
+        assert!(artifact_path.exists());
+        assert!(checkpoint_path.exists());
+
+        let _ = fs::remove_file(artifact_path);
+        let _ = fs::remove_file(checkpoint_path);
+    }
+
+    #[test]
+    fn turn_demo_can_play_from_a_saved_artifact() {
+        let scenario = TurnDemoScenario::default();
+        let artifact_path = unique_test_path("turn-demo-artifact.json");
+        let artifact = scenario.build_artifact(200).unwrap();
+        write_turn_artifact(&artifact_path, &artifact).unwrap();
+
+        let mut output = Vec::new();
+        run_turn_demo(
+            &mut Cursor::new(&b"fold\n"[..]),
+            &mut output,
+            &TurnDemoOptions {
+                artifact_path: artifact_path.clone(),
+                solve_if_missing: false,
+                write_artifact_path: None,
+                no_play: false,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("Turn Demo"));
+        assert!(transcript.contains("source: loaded"));
+        assert!(transcript.contains("bot bet 100 on turn"));
+        assert!(transcript.contains("wins"));
+
+        let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn turn_demo_can_generate_an_artifact_without_playing() {
+        let artifact_path = unique_test_path("generated-turn-demo.json");
+        let mut output = Vec::new();
+
+        run_turn_demo(
+            &mut Cursor::new(&b""[..]),
+            &mut output,
+            &TurnDemoOptions {
+                artifact_path: default_turn_demo_artifact_path(),
+                solve_if_missing: true,
+                write_artifact_path: Some(artifact_path.clone()),
+                no_play: true,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("Wrote turn artifact"));
+        assert!(artifact_path.exists());
+
+        let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn turn_training_command_writes_checkpoint_and_artifact() {
+        let artifact_path = unique_test_path("trained-turn-demo.json");
+        let checkpoint_path = unique_test_path("trained-turn-demo.checkpoint.json");
+        let mut output = Vec::new();
+
+        run_train_turn_demo(
+            &mut output,
+            &super::TurnTrainingOptions {
+                artifact_path: artifact_path.clone(),
+                checkpoint_path: checkpoint_path.clone(),
+                profile: TurnTrainingProfile::Smoke,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("artifact: 100 iterations"));
         assert!(artifact_path.exists());
         assert!(checkpoint_path.exists());
 
