@@ -947,6 +947,117 @@ mod tests {
         assert!(session.state.current_outcome().is_some());
     }
 
+    #[test]
+    fn browser_session_short_stack_preflop_snapshot_exposes_fold_call_and_all_in() {
+        let mut session = BrowserSession::new(WebSessionConfig::default()).unwrap();
+        session.state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+            130,
+            180,
+        )
+        .unwrap();
+
+        let snapshot = session.snapshot().unwrap();
+        assert_snapshot_matches_expected_human_menu(
+            &session,
+            &snapshot,
+            WebBotMode::HybridFast,
+            WebSeat::Button,
+            0,
+            0,
+            0,
+        );
+        assert_eq!(
+            snapshot
+                .legal_actions
+                .iter()
+                .map(|action| action.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["fold", "call", "allIn:130"]
+        );
+    }
+
+    #[test]
+    fn browser_session_short_stack_postflop_snapshot_exposes_check_and_all_in_only() {
+        let mut session = BrowserSession::new(WebSessionConfig {
+            human_seat: WebSeat::BigBlind,
+            ..WebSessionConfig::default()
+        })
+        .unwrap();
+        session.state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+            150,
+            150,
+        )
+        .unwrap();
+        session.state.apply_action(PlayerAction::Call).unwrap();
+        session.state.apply_action(PlayerAction::Check).unwrap();
+        session
+            .state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let snapshot = session.snapshot().unwrap();
+        assert_snapshot_matches_expected_human_menu(
+            &session,
+            &snapshot,
+            WebBotMode::HybridFast,
+            WebSeat::BigBlind,
+            0,
+            0,
+            0,
+        );
+        assert_eq!(
+            snapshot
+                .legal_actions
+                .iter()
+                .map(|action| action.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["check", "allIn:50"]
+        );
+    }
+
+    #[test]
+    fn browser_session_short_stack_facing_all_in_snapshot_exposes_fold_and_call_only() {
+        let mut session = BrowserSession::new(WebSessionConfig {
+            human_seat: WebSeat::BigBlind,
+            ..WebSessionConfig::default()
+        })
+        .unwrap();
+        session.state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+            300,
+            10_000,
+        )
+        .unwrap();
+        session.state.apply_action(PlayerAction::AllIn).unwrap();
+
+        let snapshot = session.snapshot().unwrap();
+        assert_snapshot_matches_expected_human_menu(
+            &session,
+            &snapshot,
+            WebBotMode::HybridFast,
+            WebSeat::BigBlind,
+            0,
+            0,
+            0,
+        );
+        assert_eq!(
+            snapshot
+                .legal_actions
+                .iter()
+                .map(|action| action.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["fold", "call"]
+        );
+    }
+
     fn preferred_action_id(snapshot: &super::WebSessionSnapshot) -> String {
         for preferred in ["check", "call"] {
             if let Some(action) = snapshot
@@ -1054,6 +1165,15 @@ mod tests {
                     "failed to snapshot stress session for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}: {error}"
                 )
             });
+            assert_snapshot_matches_expected_human_menu(
+                session,
+                &snapshot,
+                bot_mode,
+                human_seat,
+                seed,
+                hand_index,
+                action_index,
+            );
 
             if snapshot.terminal_summary.is_some() {
                 assert_terminal_snapshot_invariants(
@@ -1107,6 +1227,38 @@ mod tests {
     ) -> String {
         let index = opponent_rng.random_range(0..snapshot.legal_actions.len());
         snapshot.legal_actions[index].id.clone()
+    }
+
+    fn assert_snapshot_matches_expected_human_menu(
+        session: &BrowserSession,
+        snapshot: &super::WebSessionSnapshot,
+        bot_mode: WebBotMode,
+        human_seat: WebSeat,
+        seed: u64,
+        hand_index: usize,
+        action_index: usize,
+    ) {
+        let expected_ids = session
+            .human_actions()
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to build expected human action menu for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}: {error}"
+                )
+            })
+            .into_iter()
+            .map(super::action_id_for_abstract)
+            .collect::<Vec<_>>();
+        let actual_ids = snapshot
+            .legal_actions
+            .iter()
+            .map(|action| action.id.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual_ids,
+            expected_ids,
+            "browser action menu drifted from expected abstract actions for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}"
+        );
     }
 
     fn assert_nonterminal_snapshot_invariants(
