@@ -60,7 +60,7 @@ test('keeps the player-facing app on the fixed hybrid-play experience', async ({
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible()
 })
 
-test('keeps the bot feedback bubble visible until the player acts again', async ({ page }) => {
+test('shows bot thinking feedback and then fades the action bubble', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
 
@@ -80,14 +80,7 @@ test('keeps the bot feedback bubble visible until the player acts again', async 
 
   await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
   await expect(page.locator('.action-bubble')).toHaveCount(1)
-
-  const nextAction = page
-    .getByLabel('Action tray')
-    .getByRole('button', { name: /Call|Check|Fold|Raise/ })
-    .first()
-  await nextAction.click()
-
-  await expect(page.locator('.action-bubble')).toContainText('Thinking')
+  await expect(page.locator('.action-bubble')).toHaveCount(0, { timeout: 5_000 })
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {

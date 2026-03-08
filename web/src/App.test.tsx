@@ -1,6 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+import { BOT_ACTION_BUBBLE_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
 const baseSnapshot: WebSessionSnapshot = {
@@ -58,24 +59,38 @@ const terminalSnapshot: WebSessionSnapshot = {
   ],
 }
 
-const postActionSnapshot: WebSessionSnapshot = {
+const afterHumanSnapshot: WebSessionSnapshot = {
   ...baseSnapshot,
   street: 'flop',
-  pot: 800,
+  currentActor: 'bigBlind',
+  legalActions: [],
+  pot: 400,
   boardCards: ['Ah', '7d', '2c'],
   history: [
     ...baseSnapshot.history,
-    'preflop: button calls',
-    'preflop: big-blind raises to 4.0 bb',
-    'preflop: button calls',
+    'preflop: button raises to 4.0 bb',
+    'preflop: big-blind calls',
     'flop: Ah 7d 2c',
   ],
+  status: 'Bot to act on flop (big-blind).',
+}
+
+const postActionSnapshot: WebSessionSnapshot = {
+  ...afterHumanSnapshot,
+  pot: 800,
+  history: [
+    ...afterHumanSnapshot.history,
+    'flop: big-blind bets to 4.0 bb',
+  ],
   legalActions: [{ id: 'check', label: 'Check' }],
+  currentActor: 'button',
+  status: 'Your turn on flop.',
 }
 
 const initMock = vi.fn().mockResolvedValue(baseSnapshot)
 const resetHandMock = vi.fn().mockResolvedValue(baseSnapshot)
-const applyHumanActionMock = vi.fn().mockResolvedValue(postActionSnapshot)
+const applyHumanActionMock = vi.fn().mockResolvedValue(afterHumanSnapshot)
+const advanceBotMock = vi.fn().mockResolvedValue(postActionSnapshot)
 const disposeMock = vi.fn()
 
 vi.mock('./lib/pokerClient', () => ({
@@ -83,6 +98,7 @@ vi.mock('./lib/pokerClient', () => ({
     init = initMock
     resetHand = resetHandMock
     applyHumanAction = applyHumanActionMock
+    advanceBot = advanceBotMock
     dispose = disposeMock
   },
 }))
@@ -97,7 +113,9 @@ describe('App', () => {
     resetHandMock.mockReset()
     resetHandMock.mockResolvedValue(baseSnapshot)
     applyHumanActionMock.mockReset()
-    applyHumanActionMock.mockResolvedValue(postActionSnapshot)
+    applyHumanActionMock.mockResolvedValue(afterHumanSnapshot)
+    advanceBotMock.mockReset()
+    advanceBotMock.mockResolvedValue(postActionSnapshot)
     disposeMock.mockClear()
     ;(globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 7
   })
@@ -164,15 +182,22 @@ describe('App', () => {
   })
 
   it(
-    'keeps the bot action bubble visible until the player acts again',
+    'shows the revealed board while the bot is thinking',
     async () => {
       const user = userEvent.setup()
 
-      let resolveAction: ((value: WebSessionSnapshot) => void) | null = null
+      let resolveHumanAction: ((value: WebSessionSnapshot) => void) | null = null
       applyHumanActionMock.mockImplementation(
         () =>
           new Promise<WebSessionSnapshot>((resolve) => {
-            resolveAction = resolve
+            resolveHumanAction = resolve
+          }),
+      )
+      let resolveBotAction: ((value: WebSessionSnapshot) => void) | null = null
+      advanceBotMock.mockImplementation(
+        () =>
+          new Promise<WebSessionSnapshot>((resolve) => {
+            resolveBotAction = resolve
           }),
       )
 
@@ -181,36 +206,41 @@ describe('App', () => {
 
       await user.click(callButton)
 
-      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
       expect(callButton).toBeDisabled()
 
       await act(async () => {
-        resolveAction?.(postActionSnapshot)
+        resolveHumanAction?.(afterHumanSnapshot)
         await Promise.resolve()
       })
 
-      expect(await screen.findByText('Raises to 4.0 BB')).toBeInTheDocument()
-      const checkButton = screen.getByRole('button', { name: 'Check' })
-      expect(checkButton).not.toBeDisabled()
-
-      let resolveFollowUp: ((value: WebSessionSnapshot) => void) | null = null
-      applyHumanActionMock.mockImplementationOnce(
-        () =>
-          new Promise<WebSessionSnapshot>((resolve) => {
-            resolveFollowUp = resolve
-          }),
-      )
-
-      await user.click(checkButton)
-
-      expect(screen.queryByText('Raises to 4.0 BB')).not.toBeInTheDocument()
       expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
+      expect(screen.getByText('Watch the bot respond')).toBeInTheDocument()
+      expect(within(screen.getByLabelText('Board cards')).getAllByRole('img', { name: /of/i })).toHaveLength(3)
 
       await act(async () => {
-        resolveFollowUp?.(terminalSnapshot)
+        resolveBotAction?.(postActionSnapshot)
         await Promise.resolve()
       })
+
+      expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
     },
     10_000,
   )
+
+  it('fades the bot action bubble after a short delay', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+    const callButton = await screen.findByRole('button', { name: 'Call' })
+
+    await user.click(callButton)
+
+    expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, BOT_ACTION_BUBBLE_MS + 100))
+    })
+
+    expect(screen.queryByText('Bets to 4.0 BB')).not.toBeInTheDocument()
+  }, 10_000)
 })

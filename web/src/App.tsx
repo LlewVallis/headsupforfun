@@ -4,6 +4,7 @@ import { PokerCard } from './components/PokerCard'
 import { PokerChipMark } from './components/PokerChipMark'
 import { PokerClient } from './lib/pokerClient'
 import {
+  BOT_ACTION_BUBBLE_MS,
   actionPrompt,
   botLabel,
   buildPlayerSessionConfig,
@@ -28,6 +29,7 @@ type SeatBubble =
 function App() {
   const clientRef = useRef<PokerClient | null>(null)
   const initRequestRef = useRef(0)
+  const botBubbleTimerRef = useRef<number | null>(null)
   const [snapshot, setSnapshot] = useState<WebSessionSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -38,6 +40,7 @@ function App() {
     void recreateClientAndInitialize(buildPlayerSessionConfig())
 
     return () => {
+      clearBotBubbleTimer()
       disposeClient()
     }
   }, [])
@@ -82,6 +85,7 @@ function App() {
         : null
 
   const handleNewMatch = async () => {
+    clearBotBubbleTimer()
     setBotPresence({ state: 'idle' })
     await recreateClientAndInitialize(buildPlayerSessionConfig())
   }
@@ -96,6 +100,7 @@ function App() {
       return
     }
 
+    clearBotBubbleTimer()
     setBotPresence({ state: 'idle' })
     await runClientAction(async () => {
       const nextSnapshot = await client.resetHand()
@@ -105,24 +110,45 @@ function App() {
 
   const handleAction = async (actionId: string) => {
     const client = clientRef.current
-    const previousSnapshot = snapshot
-    if (!client || !previousSnapshot) {
+    if (!client || !snapshot) {
       return
     }
 
-    setBotPresence({ state: 'thinking' })
-    await runClientAction(async () => {
-      const nextSnapshot = await client.applyHumanAction(actionId)
-      setSnapshot(nextSnapshot)
+    clearBotBubbleTimer()
+    setBusy(true)
+    setError(null)
 
-      const botAction = extractBotActionLabel(previousSnapshot, nextSnapshot)
+    try {
+      const afterHumanSnapshot = await client.applyHumanAction(actionId)
+      setSnapshot(afterHumanSnapshot)
+
+      if (afterHumanSnapshot.terminalSummary) {
+        setBotPresence({ state: 'idle' })
+        return
+      }
+
+      if (afterHumanSnapshot.currentActor !== afterHumanSnapshot.botSeat) {
+        setBotPresence({ state: 'idle' })
+        return
+      }
+
+      setBotPresence({ state: 'thinking' })
+      const afterBotSnapshot = await client.advanceBot()
+      setSnapshot(afterBotSnapshot)
+
+      const botAction = extractBotActionLabel(afterHumanSnapshot, afterBotSnapshot)
       if (botAction) {
-        setBotPresence({ state: 'action', label: botAction })
+        showBotActionBubble(botAction)
         return
       }
 
       setBotPresence({ state: 'idle' })
-    })
+    } catch (err) {
+      setBotPresence({ state: 'idle' })
+      setError(toErrorMessage(err))
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function recreateClientAndInitialize(config: WebSessionConfig): Promise<void> {
@@ -138,6 +164,27 @@ function App() {
     const client = clientRef.current
     clientRef.current = null
     client?.dispose()
+  }
+
+  function clearBotBubbleTimer(): void {
+    if (botBubbleTimerRef.current === null) {
+      return
+    }
+    window.clearTimeout(botBubbleTimerRef.current)
+    botBubbleTimerRef.current = null
+  }
+
+  function showBotActionBubble(label: string): void {
+    clearBotBubbleTimer()
+    setBotPresence({ state: 'action', label })
+    botBubbleTimerRef.current = window.setTimeout(() => {
+      setBotPresence((current) =>
+        current.state === 'action' && current.label === label
+          ? { state: 'idle' }
+          : current,
+      )
+      botBubbleTimerRef.current = null
+    }, BOT_ACTION_BUBBLE_MS)
   }
 
   async function initializeSession(
@@ -303,7 +350,7 @@ function App() {
                     <h2 className="mt-1.5 text-[1.7rem] font-semibold tracking-[-0.04em] text-white md:text-[2.05rem]">
                       {outcome ? outcome.headline : heroTurn ? 'Pick your action' : 'Watch the bot respond'}
                     </h2>
-                    <p className="mt-1.5 text-sm leading-5 text-white/68">
+                    <p className="mt-1 text-sm leading-5 text-white/68">
                       {outcome
                         ? outcome.detail
                         : botPresence.state === 'action'
@@ -478,6 +525,7 @@ function ActionBubble(props: SeatBubble) {
     <div
       className={joinClasses(
         'action-bubble absolute left-1/2 top-0 z-10 inline-flex min-h-10 -translate-x-1/2 -translate-y-[52%] items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] shadow-[0_12px_30px_rgba(0,0,0,0.28)] md:text-[0.72rem]',
+        props.tone === 'action' ? 'action-bubble-fade' : '',
         props.tone === 'thinking'
           ? 'border-gold-300/24 bg-black/62 text-gold-300'
           : 'border-gold-300/26 bg-black/55 text-gold-300',

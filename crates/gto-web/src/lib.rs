@@ -202,7 +202,7 @@ impl BrowserSession {
         };
 
         self.state.apply_action(action.to_player_action())?;
-        self.advance_until_human_turn_or_terminal()?;
+        self.advance_until_next_decision_or_terminal()?;
         self.snapshot()
     }
 
@@ -231,6 +231,16 @@ impl BrowserSession {
                     let action = self.bot.choose_action(self.bot_role, &self.state)?;
                     self.state.apply_action(action)?;
                 }
+                HandPhase::BettingRound { .. } | HandPhase::Terminal { .. } => break,
+            }
+        }
+        Ok(())
+    }
+
+    fn advance_until_next_decision_or_terminal(&mut self) -> Result<(), WebSessionError> {
+        loop {
+            match self.state.phase() {
+                HandPhase::AwaitingBoard { next_street } => self.reveal_board(next_street)?,
                 HandPhase::BettingRound { .. } | HandPhase::Terminal { .. } => break,
             }
         }
@@ -690,6 +700,13 @@ mod tests {
                 return;
             }
 
+            if left_snapshot.current_actor == Some(left_snapshot.bot_seat) {
+                let next_left = left.advance_bot().unwrap();
+                let next_right = right.advance_bot().unwrap();
+                assert_eq!(next_left, next_right);
+                continue;
+            }
+
             let action_id = preferred_action_id(&left_snapshot);
             let next_left = left.apply_human_action(&action_id).unwrap();
             let next_right = right.apply_human_action(&action_id).unwrap();
@@ -721,6 +738,11 @@ mod tests {
             if snapshot.terminal_summary.is_some() {
                 assert!(snapshot.legal_actions.is_empty());
                 return;
+            }
+
+            if snapshot.current_actor == Some(snapshot.bot_seat) {
+                session.advance_bot().unwrap();
+                continue;
             }
 
             assert_eq!(snapshot.current_actor, Some(snapshot.human_seat));

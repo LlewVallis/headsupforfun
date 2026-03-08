@@ -141,17 +141,16 @@ describe('PokerClient', () => {
     client.dispose()
   })
 
-  it('forwards a forced action delay override for the next human action', async () => {
+  it('forwards a forced action delay override for the next bot action', async () => {
     ;(globalThis as typeof globalThis & { __GTO_FORCE_ACTION_DELAY_MS__?: number }).__GTO_FORCE_ACTION_DELAY_MS__ =
       180
     const client = new PokerClient()
     const worker = expectWorker()
-    const pending = client.applyHumanAction('call')
+    const pending = client.advanceBot()
 
     expect(worker.postedMessages[0]).toMatchObject({
       id: 1,
-      type: 'applyHumanAction',
-      actionId: 'call',
+      type: 'advanceBot',
       forceActionDelayMs: 180,
     })
 

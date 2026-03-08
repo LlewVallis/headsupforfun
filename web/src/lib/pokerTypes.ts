@@ -43,7 +43,8 @@ export interface WebSessionSnapshot {
 export type PokerWorkerCommand =
   | { type: 'init'; config: WebSessionConfig; forceInitError?: string | null }
   | { type: 'snapshot' }
-  | { type: 'applyHumanAction'; actionId: string; forceActionDelayMs?: number | null }
+  | { type: 'applyHumanAction'; actionId: string }
+  | { type: 'advanceBot'; forceActionDelayMs?: number | null }
   | { type: 'resetHand' }
 
 export type PokerWorkerRequest =
@@ -58,8 +59,8 @@ export type PokerWorkerRequest =
       id: number
       type: 'applyHumanAction'
       actionId: string
-      forceActionDelayMs?: number | null
     }
+  | { id: number; type: 'advanceBot'; forceActionDelayMs?: number | null }
   | { id: number; type: 'resetHand' }
 
 export type PokerWorkerResponse =

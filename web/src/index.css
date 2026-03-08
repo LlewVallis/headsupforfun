@@ -82,6 +82,12 @@
     animation: action-pop 220ms ease-out;
   }
 
+  .action-bubble-fade {
+    animation:
+      action-pop 220ms ease-out,
+      action-bubble-fade 1.4s ease-out forwards;
+  }
+
   .card-shell {
     background: linear-gradient(180deg, rgb(247 242 230 / 96%), rgb(223 211 190 / 92%));
   }
@@ -128,10 +134,24 @@
   }
 }
 
+@keyframes action-bubble-fade {
+  0%,
+  70% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bot-thinking,
   .thinking-dot,
-  .action-bubble {
+  .action-bubble,
+  .action-bubble-fade {
     animation: none;
   }
 }

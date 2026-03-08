@@ -1,6 +1,7 @@
 import type { WebBotMode, WebSeat, WebSessionConfig, WebSessionSnapshot } from './pokerTypes'
 
 export const PLAYER_BOT_MODE: WebBotMode = 'hybridPlay'
+export const BOT_ACTION_BUBBLE_MS = 1400
 
 const DEFAULT_TEST_SEED = 7
 

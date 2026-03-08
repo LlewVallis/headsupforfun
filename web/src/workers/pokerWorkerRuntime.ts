@@ -8,6 +8,7 @@ import type {
 export interface PokerSessionLike {
   snapshot(): unknown
   applyHumanAction(actionId: string): unknown
+  advanceBot(): unknown
   resetHand(): unknown
 }
 
@@ -45,10 +46,13 @@ export class PokerWorkerRuntime {
           snapshot = asSnapshot(this.requireSession().snapshot())
           break
         case 'applyHumanAction':
-          await maybeDelay(message.forceActionDelayMs)
           snapshot = asSnapshot(
             this.requireSession().applyHumanAction(message.actionId),
           )
+          break
+        case 'advanceBot':
+          await maybeDelay(message.forceActionDelayMs)
+          snapshot = asSnapshot(this.requireSession().advanceBot())
           break
         case 'resetHand':
           snapshot = asSnapshot(this.requireSession().resetHand())

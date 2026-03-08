@@ -46,6 +46,7 @@ describe('PokerWorkerRuntime', () => {
     const createSession = vi.fn(() => ({
       snapshot: vi.fn(() => mockSnapshot),
       applyHumanAction: vi.fn(),
+      advanceBot: vi.fn(),
       resetHand: vi.fn(),
     }))
     const runtime = new PokerWorkerRuntime({
@@ -85,6 +86,7 @@ describe('PokerWorkerRuntime', () => {
       createSession: vi.fn(() => ({
         snapshot: vi.fn(() => mockSnapshot),
         applyHumanAction,
+        advanceBot: vi.fn(() => mockSnapshot),
         resetHand: vi.fn(() => mockSnapshot),
       })),
     })
@@ -100,14 +102,15 @@ describe('PokerWorkerRuntime', () => {
     expect(response).toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
   })
 
-  it('waits for a forced human-action delay when requested by the test harness', async () => {
+  it('waits for a forced bot-action delay when requested by the test harness', async () => {
     vi.useFakeTimers()
-    const applyHumanAction = vi.fn(() => mockSnapshot)
+    const advanceBot = vi.fn(() => mockSnapshot)
     const runtime = new PokerWorkerRuntime({
       initWasm: vi.fn(async () => undefined),
       createSession: vi.fn(() => ({
         snapshot: vi.fn(() => mockSnapshot),
-        applyHumanAction,
+        applyHumanAction: vi.fn(() => mockSnapshot),
+        advanceBot,
         resetHand: vi.fn(() => mockSnapshot),
       })),
     })
@@ -115,17 +118,16 @@ describe('PokerWorkerRuntime', () => {
     await runtime.handle({ id: 1, type: 'init', config: mockConfig })
     const pending = runtime.handle({
       id: 2,
-      type: 'applyHumanAction',
-      actionId: 'call',
+      type: 'advanceBot',
       forceActionDelayMs: 120,
     })
 
     await vi.advanceTimersByTimeAsync(100)
-    expect(applyHumanAction).not.toHaveBeenCalled()
+    expect(advanceBot).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(20)
     await expect(pending).resolves.toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
-    expect(applyHumanAction).toHaveBeenCalledWith('call')
+    expect(advanceBot).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
 

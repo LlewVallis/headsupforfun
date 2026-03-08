@@ -41,6 +41,12 @@ export class PokerClient {
     return this.send({
       type: 'applyHumanAction',
       actionId,
+    })
+  }
+
+  async advanceBot(): Promise<WebSessionSnapshot> {
+    return this.send({
+      type: 'advanceBot',
       forceActionDelayMs: readForcedWorkerActionDelay(),
     })
   }
