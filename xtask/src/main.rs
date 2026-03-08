@@ -13,6 +13,7 @@ type DynError = Box<dyn Error>;
 
 const FAST_TIMEOUT_SECS: u64 = 60;
 const SLOW_TIMEOUT_SECS: u64 = 300;
+const SOLVER_SLOW_TIMEOUT_SECS: u64 = 300;
 const WASM_TIMEOUT_SECS: u64 = 120;
 const TRAIN_SMOKE_TIMEOUT_SECS: u64 = 60;
 const TRAIN_DEV_TIMEOUT_SECS: u64 = 600;
@@ -47,6 +48,11 @@ fn run() -> Result<(), DynError> {
             &workspace_root,
             &["test", "--workspace", "--", "--ignored"],
             timeout.unwrap_or(SLOW_TIMEOUT_SECS),
+        ),
+        "test-solver-slow" => run_cargo(
+            &workspace_root,
+            &["test", "-p", "gto-solver", "--", "--ignored"],
+            timeout.unwrap_or(SOLVER_SLOW_TIMEOUT_SECS),
         ),
         "check-wasm" => {
             ensure_wasm_target_installed(&workspace_root)?;
@@ -292,6 +298,7 @@ fn print_help() {
 Usage:
   cargo xtask test-fast [--timeout-secs <seconds>]
   cargo xtask test-slow [--timeout-secs <seconds>]
+  cargo xtask test-solver-slow [--timeout-secs <seconds>]
   cargo xtask check-wasm [--timeout-secs <seconds>]
   cargo xtask check-all [--timeout-secs <seconds>]
   cargo xtask train-smoke [--timeout-secs <seconds>]
@@ -304,6 +311,7 @@ Usage:
 Commands:
   test-fast   Run the fast workspace test suite.
   test-slow   Run ignored tests intended for opt-in slow coverage.
+  test-solver-slow Run ignored tests for gto-solver only.
   check-wasm  Compile-check gto-core and gto-solver for wasm32-unknown-unknown.
   check-all   Run test-fast and check-wasm in sequence.
   train-smoke Train the bundled river, turn, and flop demo artifacts with smoke profiles.
