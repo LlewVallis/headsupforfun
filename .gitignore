@@ -1,5 +1,4 @@
 /target
-artifacts/eval
 /.idea
 /fixtures/checkpoints
 /fixtures/strategies/flop_demo.json
