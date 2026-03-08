@@ -409,6 +409,7 @@ function buildScenarioSnapshot(
     humanSeat: 'button',
     botSeat: 'bigBlind',
     botMode: config.botMode,
+    matchOver: false,
     street: state.street,
     phase: state.terminalSummary ? 'terminal' : 'bettingRound',
     currentActor: state.currentActor,
@@ -443,6 +444,8 @@ function openingActions(): WebActionChoice[] {
     { id: 'call', label: 'Call' },
     { id: 'raiseTo:250', label: 'Raise to 2.5 bb' },
     { id: 'raiseTo:400', label: 'Raise to 4.0 bb' },
+    { id: 'raiseTo:700', label: 'Raise to 7.0 bb' },
+    { id: 'allIn:10000', label: 'All-in to 100.0 bb' },
   ]
 }
 

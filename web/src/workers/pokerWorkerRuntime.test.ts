@@ -14,6 +14,7 @@ const mockSnapshot: WebSessionSnapshot = {
   humanSeat: 'button',
   botSeat: 'bigBlind',
   botMode: 'hybridFast',
+  matchOver: false,
   street: 'preflop',
   phase: 'bettingRound',
   currentActor: 'button',

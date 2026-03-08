@@ -21,6 +21,7 @@ const snapshot: WebSessionSnapshot = {
   humanSeat: 'button',
   botSeat: 'bigBlind',
   botMode: 'hybridPlay',
+  matchOver: false,
   street: 'turn',
   phase: 'bettingRound',
   currentActor: 'button',

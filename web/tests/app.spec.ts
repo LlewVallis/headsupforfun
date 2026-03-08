@@ -97,9 +97,13 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
 async function clickPreferredAction(page: Page): Promise<boolean> {
   const actionTray = page.getByLabel('Action tray')
 
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     const nextHandButton = actionTray.getByRole('button', { name: 'Deal next hand' })
     if (await nextHandButton.isVisible().catch(() => false)) {
+      return false
+    }
+    const newMatchButton = actionTray.getByRole('button', { name: 'Start new match' })
+    if (await newMatchButton.isVisible().catch(() => false)) {
       return false
     }
 

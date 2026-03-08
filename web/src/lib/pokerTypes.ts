@@ -27,6 +27,7 @@ export interface WebSessionSnapshot {
   humanSeat: WebSeat
   botSeat: WebSeat
   botMode: WebBotMode
+  matchOver: boolean
   street: string
   phase: string
   currentActor: WebSeat | null

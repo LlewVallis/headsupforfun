@@ -6,8 +6,8 @@ use std::fmt::{self, Display, Formatter};
 
 use gto_core::{
     DEFAULT_RNG_SEED, Deck, DeterministicRng, DuplicateCardError, HandOutcome, HandPhase,
-    HistoryEvent, HoldemConfig, HoldemHandState, HoldemStateError, Player, PlayerAction, Street,
-    rng_from_seed,
+    HeadsUpMatchState, HistoryEvent, HoldemConfig, HoldemHandState, HoldemStateError, MatchConfig,
+    MatchPlayer, MatchStateError, Player, PlayerAction, Street, rng_from_seed,
 };
 use gto_solver::{
     AbstractAction, BlueprintArtifactError, BlueprintBot, FullHandBlueprintArtifact, HybridBot,
@@ -104,6 +104,7 @@ pub struct WebSessionSnapshot {
     pub human_seat: WebSeat,
     pub bot_seat: WebSeat,
     pub bot_mode: WebBotMode,
+    pub match_over: bool,
     pub street: String,
     pub phase: String,
     pub current_actor: Option<WebSeat>,
@@ -121,9 +122,9 @@ pub struct WebSessionSnapshot {
 pub struct BrowserSession {
     config: WebSessionConfig,
     rng: DeterministicRng,
-    hand_number: u64,
-    human_role: Player,
-    bot_role: Player,
+    match_state: HeadsUpMatchState,
+    human_player: MatchPlayer,
+    bot_player: MatchPlayer,
     bot: BotController,
     deal: DealtHand,
     state: HoldemHandState,
@@ -131,25 +132,40 @@ pub struct BrowserSession {
 
 impl BrowserSession {
     pub fn new(config: WebSessionConfig) -> Result<Self, WebSessionError> {
-        let human_role = Player::from(config.human_seat);
-        let bot_role = human_role.opponent();
+        let human_player = MatchPlayer::PlayerOne;
+        let bot_player = MatchPlayer::PlayerTwo;
+        let match_config = MatchConfig::new(
+            HoldemConfig::default().starting_stack,
+            HoldemConfig::default().small_blind,
+            HoldemConfig::default().big_blind,
+            if config.human_seat == WebSeat::Button {
+                human_player
+            } else {
+                bot_player
+            },
+        )
+        .map_err(WebSessionError::MatchConfig)?;
+        let mut match_state = HeadsUpMatchState::new(match_config).map_err(WebSessionError::MatchConfig)?;
         let artifact = load_blueprint_artifact(config.blueprint_artifact_json.as_deref())?;
         let bot = BotController::new(config.bot_mode, artifact);
         let mut rng = rng_from_seed(config.seed);
         let deal = DealtHand::deal(&mut rng)?;
-        let state = HoldemHandState::new(HoldemConfig::default(), deal.button, deal.big_blind)?;
+        let state = match_state
+            .start_next_hand(deal.button, deal.big_blind)
+            .map_err(WebSessionError::MatchState)?;
 
         let mut session = Self {
             config,
             rng,
-            hand_number: 1,
-            human_role,
-            bot_role,
+            match_state,
+            human_player,
+            bot_player,
             bot,
             deal,
             state,
         };
         session.advance_until_human_turn_or_terminal()?;
+        session.settle_terminal_hand_if_needed()?;
         Ok(session)
     }
 
@@ -160,10 +176,11 @@ impl BrowserSession {
         let terminal_summary = self.state.current_outcome().map(format_outcome_summary);
 
         Ok(WebSessionSnapshot {
-            hand_number: self.hand_number,
-            human_seat: self.config.human_seat,
-            bot_seat: WebSeat::from(self.bot_role),
+            hand_number: self.match_state.hand_number(),
+            human_seat: WebSeat::from(self.human_role()),
+            bot_seat: WebSeat::from(self.bot_role()),
             bot_mode: self.config.bot_mode,
+            match_over: self.match_state.match_over(),
             street: self.state.street().to_string(),
             phase: phase_label(self.state.phase()).to_string(),
             current_actor: self.state.current_actor().map(WebSeat::from),
@@ -191,7 +208,7 @@ impl BrowserSession {
         let Some(actor) = self.state.current_actor() else {
             return Err(WebSessionError::HumanActionUnavailable);
         };
-        if actor != self.human_role {
+        if actor != self.human_role() {
             return Err(WebSessionError::HumanActionUnavailable);
         }
 
@@ -203,23 +220,27 @@ impl BrowserSession {
 
         self.state.apply_action(action.to_player_action())?;
         self.advance_until_next_decision_or_terminal()?;
+        self.settle_terminal_hand_if_needed()?;
         self.snapshot()
     }
 
     pub fn advance_bot(&mut self) -> Result<WebSessionSnapshot, WebSessionError> {
-        self.advance_until_human_turn_or_terminal()?;
+        self.advance_bot_once_then_reveal_until_next_decision()?;
+        self.settle_terminal_hand_if_needed()?;
         self.snapshot()
     }
 
     pub fn reset_hand(&mut self) -> Result<WebSessionSnapshot, WebSessionError> {
-        self.hand_number += 1;
+        if self.match_state.match_over() {
+            return Err(WebSessionError::MatchState(MatchStateError::MatchAlreadyOver));
+        }
         self.deal = DealtHand::deal(&mut self.rng)?;
-        self.state = HoldemHandState::new(
-            HoldemConfig::default(),
-            self.deal.button,
-            self.deal.big_blind,
-        )?;
+        self.state = self
+            .match_state
+            .start_next_hand(self.deal.button, self.deal.big_blind)
+            .map_err(WebSessionError::MatchState)?;
         self.advance_until_human_turn_or_terminal()?;
+        self.settle_terminal_hand_if_needed()?;
         self.snapshot()
     }
 
@@ -227,13 +248,31 @@ impl BrowserSession {
         loop {
             match self.state.phase() {
                 HandPhase::AwaitingBoard { next_street } => self.reveal_board(next_street)?,
-                HandPhase::BettingRound { actor, .. } if actor == self.bot_role => {
-                    let action = self.bot.choose_action(self.bot_role, &self.state)?;
+                HandPhase::BettingRound { actor, .. } if actor == self.bot_role() => {
+                    let action = self.bot.choose_action(self.bot_role(), &self.state)?;
                     self.state.apply_action(action)?;
                 }
                 HandPhase::BettingRound { .. } | HandPhase::Terminal { .. } => break,
             }
         }
+        Ok(())
+    }
+
+    fn advance_bot_once_then_reveal_until_next_decision(&mut self) -> Result<(), WebSessionError> {
+        let mut bot_acted = false;
+
+        loop {
+            match self.state.phase() {
+                HandPhase::AwaitingBoard { next_street } => self.reveal_board(next_street)?,
+                HandPhase::BettingRound { actor, .. } if actor == self.bot_role() && !bot_acted => {
+                    let action = self.bot.choose_action(self.bot_role(), &self.state)?;
+                    self.state.apply_action(action)?;
+                    bot_acted = true;
+                }
+                HandPhase::BettingRound { .. } | HandPhase::Terminal { .. } => break,
+            }
+        }
+
         Ok(())
     }
 
@@ -260,7 +299,7 @@ impl BrowserSession {
     }
 
     fn human_actions(&self) -> Result<Vec<AbstractAction>, WebSessionError> {
-        if self.state.current_actor() != Some(self.human_role) {
+        if self.state.current_actor() != Some(self.human_role()) {
             return Ok(Vec::new());
         }
         abstract_actions(&self.state, self.bot.human_profile()).map_err(WebSessionError::State)
@@ -279,11 +318,11 @@ impl BrowserSession {
 
     fn player_snapshot(&self, player: Player, terminal_visible: bool) -> WebPlayerSnapshot {
         let snapshot = self.state.player(player);
-        let cards_visible = player == self.human_role || terminal_visible;
+        let cards_visible = player == self.human_role() || terminal_visible;
 
         WebPlayerSnapshot {
             seat: WebSeat::from(player),
-            stack: snapshot.stack,
+            stack: self.match_state.display_stack_for_seat(&self.state, player),
             total_contribution: snapshot.total_contribution,
             street_contribution: snapshot.street_contribution,
             folded: snapshot.folded,
@@ -300,15 +339,35 @@ impl BrowserSession {
 
     fn status_line(&self) -> String {
         match self.state.phase() {
-            HandPhase::BettingRound { actor, street } if actor == self.human_role => {
+            HandPhase::BettingRound { actor, street } if actor == self.human_role() => {
                 format!("Your turn on {street}.")
             }
             HandPhase::BettingRound { actor, street } => {
                 format!("Bot to act on {street} ({actor}).")
             }
             HandPhase::AwaitingBoard { next_street } => format!("Dealing {next_street}."),
+            HandPhase::Terminal { outcome } if self.match_state.match_over() => {
+                format!("Match over. {}", format_outcome_summary(outcome))
+            }
             HandPhase::Terminal { outcome } => format_outcome_summary(outcome),
         }
+    }
+
+    fn human_role(&self) -> Player {
+        self.match_state.seat_for_player(self.human_player)
+    }
+
+    fn bot_role(&self) -> Player {
+        self.match_state.seat_for_player(self.bot_player)
+    }
+
+    fn settle_terminal_hand_if_needed(&mut self) -> Result<(), WebSessionError> {
+        if self.state.current_outcome().is_some() && self.match_state.hand_in_progress() {
+            self.match_state
+                .complete_hand(&self.state)
+                .map_err(WebSessionError::MatchState)?;
+        }
+        Ok(())
     }
 }
 
@@ -543,6 +602,8 @@ pub enum WebSessionError {
     BlueprintArtifact(BlueprintArtifactError),
     BlueprintBot(gto_solver::BlueprintBotError),
     HybridBot(HybridBotError),
+    MatchConfig(gto_core::MatchConfigError),
+    MatchState(MatchStateError),
 }
 
 impl Display for WebSessionError {
@@ -561,6 +622,8 @@ impl Display for WebSessionError {
             Self::BlueprintArtifact(error) => write!(formatter, "{error}"),
             Self::BlueprintBot(error) => write!(formatter, "{error}"),
             Self::HybridBot(error) => write!(formatter, "{error}"),
+            Self::MatchConfig(error) => write!(formatter, "{error}"),
+            Self::MatchState(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -653,6 +716,7 @@ mod tests {
     #[test]
     fn reset_hand_advances_hand_counter() {
         let mut session = BrowserSession::new(WebSessionConfig::default()).unwrap();
+        play_hand_to_terminal(&mut session);
         let before = session.snapshot().unwrap();
 
         let after = session.reset_hand().unwrap();
@@ -662,6 +726,26 @@ mod tests {
             after.button.hole_cards,
             before.button.hole_cards,
             "reset should usually produce a fresh deal under deterministic rng progression"
+        );
+    }
+
+    #[test]
+    fn reset_hand_rotates_seats_and_carries_bankrolls() {
+        let mut session = BrowserSession::new(WebSessionConfig::default()).unwrap();
+
+        session.apply_human_action("fold").unwrap();
+        let terminal = session.snapshot().unwrap();
+        assert_eq!(terminal.human_seat, WebSeat::Button);
+        assert_eq!(terminal.button.stack, 9_950);
+        assert_eq!(terminal.big_blind.stack, 10_050);
+
+        let next = session.reset_hand().unwrap();
+        assert_eq!(next.hand_number, 2);
+        assert_eq!(next.human_seat, WebSeat::BigBlind);
+        assert_eq!(next.bot_seat, WebSeat::Button);
+        assert_ne!(
+            next.big_blind.stack, 9_900,
+            "expected carried bankroll rather than a fresh 100bb reset"
         );
     }
 

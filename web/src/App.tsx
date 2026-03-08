@@ -147,16 +147,36 @@ function App() {
         return
       }
 
-      setBotPresence({ state: 'thinking' })
-      const thinkStartedAt = performance.now()
-      await waitForNextPaint()
-      const afterBotSnapshot = await client.advanceBot()
-      await transitionSnapshot(afterHumanSnapshot, afterBotSnapshot)
-      await waitForMinimumThink(thinkStartedAt)
+      let previousSnapshot = afterHumanSnapshot
+      while (
+        !previousSnapshot.terminalSummary &&
+        previousSnapshot.currentActor === previousSnapshot.botSeat
+      ) {
+        setBotPresence({ state: 'thinking' })
+        const thinkStartedAt = performance.now()
+        await waitForNextPaint()
+        const afterBotSnapshot = await client.advanceBot()
+        await transitionSnapshot(previousSnapshot, afterBotSnapshot)
+        await waitForMinimumThink(thinkStartedAt)
 
-      const botAction = extractBotActionLabel(afterHumanSnapshot, afterBotSnapshot)
-      if (botAction) {
-        showBotActionBubble(botAction)
+        if (afterBotSnapshot.terminalSummary) {
+          setBotPresence({ state: 'idle' })
+          return
+        }
+
+        const botAction = extractBotActionLabel(previousSnapshot, afterBotSnapshot)
+        if (afterBotSnapshot.currentActor === afterBotSnapshot.botSeat) {
+          setBotPresence({ state: 'idle' })
+          previousSnapshot = afterBotSnapshot
+          continue
+        }
+
+        if (botAction) {
+          showBotActionBubble(botAction)
+          return
+        }
+
+        setBotPresence({ state: 'idle' })
         return
       }
 
@@ -440,10 +460,10 @@ function App() {
                       <button
                         type="button"
                         className="inline-flex min-h-11 items-center justify-center rounded-full bg-[linear-gradient(180deg,#efdca4,#d6ac56)] px-5 text-[0.78rem] font-semibold uppercase tracking-[0.16em] text-[#102116] shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition duration-150 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
-                        onClick={handleNextHand}
+                        onClick={snapshot.matchOver ? handleNewMatch : handleNextHand}
                         disabled={controlsLocked}
                       >
-                        Deal next hand
+                        {snapshot.matchOver ? 'Start new match' : 'Deal next hand'}
                       </button>
                     ) : (
                       <div className="flex w-full flex-wrap items-center justify-center gap-2.5">

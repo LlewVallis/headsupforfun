@@ -9,6 +9,7 @@ const baseSnapshot: WebSessionSnapshot = {
   humanSeat: 'button',
   botSeat: 'bigBlind',
   botMode: 'hybridPlay',
+  matchOver: false,
   street: 'preflop',
   phase: 'bettingRound',
   currentActor: 'button',
@@ -148,6 +149,22 @@ describe('App', () => {
       humanSeat: 'button',
       botMode: 'hybridPlay',
     })
+  })
+
+  it('surfaces widened abstract actions including all-in when present in the snapshot', async () => {
+    initMock.mockResolvedValueOnce({
+      ...baseSnapshot,
+      legalActions: [
+        { id: 'call', label: 'Call' },
+        { id: 'raiseTo:700', label: 'Raise to 7.0 bb' },
+        { id: 'allIn:9950', label: 'All-in to 99.5 bb' },
+      ],
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Raise to 7.0 bb' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All-in to 99.5 bb' })).toBeInTheDocument()
   })
 
   it('shows a recoverable table-reset banner when initialization fails', async () => {
