@@ -66,6 +66,24 @@ impl<G: ExtensiveGameState> CfrPlusSolver<G> {
         })
     }
 
+    pub fn average_strategy_snapshot(&self) -> HashMap<G::InfoSet, Vec<(G::Action, f64)>> {
+        self.entries
+            .iter()
+            .map(|(infoset, entry)| {
+                let strategy = normalized(&entry.strategy_sum);
+                (
+                    infoset.clone(),
+                    entry
+                        .actions
+                        .iter()
+                        .cloned()
+                        .zip(strategy)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    }
+
     pub fn expected_value(&self) -> [f64; 2] {
         self.expected_value_from(self.root.clone())
     }
