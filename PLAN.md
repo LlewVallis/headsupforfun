@@ -139,6 +139,8 @@ Implications:
     gto-cli/
     xtask/
   fixtures/
+    eval/
+      spots/
     strategies/
     transcripts/
     toy_games/
@@ -341,6 +343,47 @@ Long path:
 - `insta` or plain golden files for transcript snapshots
 - `serde` plus a stable binary format for artifact tests
 - `rand_chacha` for deterministic RNG
+
+## Offline Evaluation Strategy
+
+### Principles
+
+- The immediate goal is a narrow offline comparison lane against `TexasSolver`, not a broad general evaluation framework.
+- Evaluation must be offline, deterministic, and reproducible from saved fixtures.
+- The ordinary fast developer loop must not depend on having `TexasSolver` installed or running.
+- External solver comparison is only valid when the compared spot definition matches exactly:
+  - stacks
+  - ranges
+  - board
+  - action history
+  - allowed action abstraction
+- Start with curated postflop spots only, where matching the spot definition is practical.
+- Prefer EV-gap grading when `TexasSolver` output supports it; otherwise fall back to action agreement.
+
+### Immediate Scope
+
+- Curated fixed postflop spots only
+- One external oracle only: `TexasSolver`
+- One offline import/export path only
+- No cross-play harness
+- No best-response or exploitability expansion
+- No generic oracle abstraction layer
+
+### Standard Metrics
+
+- Action-agreement rate on curated spots
+- EV gap from the best `TexasSolver` action when available
+- Unsupported / mismatched spot count
+- Simple per-street summary over the curated spot suite
+
+### Output And Tooling Expectations
+
+- Evaluation runs should produce both:
+  - machine-readable reports such as JSON
+  - a small human-readable summary for terminal use
+- `xtask` should expose a narrow offline oracle command such as:
+  - `cargo xtask eval-texassolver --suite smoke --input path/to/reference.json`
+- Generated reports should live outside committed fixtures by default, for example under `artifacts/eval/`
 
 ## Performance Strategy
 
@@ -1001,6 +1044,46 @@ Risk notes:
 - Runtime preflop solving remains out of scope unless a later milestone explicitly revisits that decision
 - If a full stack-aware preflop blueprint is too expensive immediately, the depth-bucketing approximation and fallback policy must be explicit and tested rather than implicit
 
+### M25. TexasSolver Postflop Cross-Reference Spike
+
+Goal:
+
+- Compare the bot's choices against `TexasSolver` on curated postflop spots as quickly as possible, without broadening into a general evaluation platform.
+
+Deliverables:
+
+- Define a minimal fixed spot format for curated postflop evaluation spots
+- Add a narrow spot-export path for curated postflop fixtures that can be translated into `TexasSolver` console inputs
+- Define an import format for `TexasSolver` outputs on those same fixed spots
+- Add an offline grader that compares:
+  - chosen action
+  - best reference action
+  - EV of chosen action
+  - EV gap from best action
+- Start with postflop spot grading, where matching trees and ranges is more practical
+- Keep the first supported oracle workflow limited to:
+  - curated postflop spots only
+  - one external solver: `TexasSolver`
+  - one imported output format
+  - offline evaluation only
+- Keep the first report/output path simple and terminal-friendly rather than building a generalized analytics framework
+- Document the exact spot-matching requirements so external comparisons remain valid
+
+Validation:
+
+- Parser and import tests for external reference files
+- Fixture round-trip tests for the curated spot format
+- Fixture-based grading tests using canned reference outputs
+- Regression tests that reject or flag incompatible spot definitions instead of silently grading nonsense
+- Smoke oracle-grading run succeeds on a tiny curated `TexasSolver` spot suite without affecting the ordinary fast developer loop
+
+Risk notes:
+
+- External-solver comparison is only valid when the compared trees and ranges really match
+- This should be an optional offline lane, not a hard dependency in the main dev workflow
+- `TexasSolver` should be treated as an external offline reference tool, not a linked or embedded dependency
+- Do not broaden this milestone into cross-play, best-response work, or a generic oracle abstraction before the narrow `TexasSolver` path is working
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion
@@ -1023,8 +1106,8 @@ Mitigation:
 Mitigation:
 
 - Exact toy-game convergence checks
-- Best-response or exploitability-style checks on reduced domains
 - Deterministic regression baselines for larger abstractions
+- Offline `TexasSolver` spot grading on curated matching postflop spots
 
 ### Risk: Slow Developer Iteration
 
@@ -1061,6 +1144,7 @@ The repository is successful when all of the following are true:
 4. `gto-core` and `gto-solver` compile for WASM.
 5. The default test loop is fast and extensive, with slow work clearly separated.
 6. The repo contains enough strategy data or fast-generation tooling that an autonomous agent is not blocked by multi-hour training.
+7. The repo contains a narrow offline `TexasSolver` cross-reference lane for curated postflop spots.
 
 ## References Reviewed
 
