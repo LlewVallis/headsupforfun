@@ -616,6 +616,155 @@ Non-goals:
 - Building a true runtime solver for preflop
 - Solving every decision online regardless of latency cost
 
+## Web Follow-On Plan
+
+The next phase extends the existing reusable Rust crates into a static browser experience. This is a follow-on delivery after the CLI milestones above, not a rewrite.
+
+### Web Product Goal
+
+Build a single-page static website where a human can play heads-up no-limit hold'em against the existing bot using the same abstract action menu already supported by the solver stack.
+
+Constraints for this phase:
+
+- No backend service
+- Desktop-first, with mobile usability as a secondary concern
+- Frontend built with `Vite`, `TypeScript`, and `Tailwind CSS`
+- Browser integration through a dedicated Rust WASM adapter crate
+- Heavy WASM solver work must run off the main browser thread via a Web Worker
+- Production web builds use optimized release-mode WASM artifacts
+- Production web play should target the equivalent of the CLI hybrid `--postflop-profile play` mode when browser latency is acceptable
+
+### Web Architecture Strategy
+
+1. Keep `gto-core` and `gto-solver` free of browser framework concerns.
+2. Add a thin `gto-web` Rust crate that exposes a browser-safe session API through `wasm-bindgen`.
+3. Run the WASM-backed poker session inside a dedicated Web Worker so heavy bot actions do not block rendering or input.
+4. Keep the web UI client-only and statically hosted.
+5. Reuse the existing abstract action menu instead of introducing arbitrary bet sizing.
+6. Treat runtime postflop solving in the browser as a product requirement for the stronger production build, but gate it behind measured browser responsiveness during implementation.
+
+### Recommended Workspace Layout Update
+
+```text
+/
+  PLAN.md
+  AGENTS.md
+  Cargo.toml
+  crates/
+    gto-core/
+    gto-solver/
+    gto-cli/
+    gto-web/
+    xtask/
+  fixtures/
+    strategies/
+    transcripts/
+    toy_games/
+  web/
+```
+
+### `gto-web`
+
+Responsibilities:
+
+- WASM-facing wrapper around `gto-core` and `gto-solver`
+- Browser-safe game session API
+- JSON-friendly state and action types for the frontend
+- Deterministic seeded session creation
+- Artifact loading from bytes bundled into or loaded by the frontend
+- API shape suitable for message-based use from a Web Worker
+
+Rules:
+
+- No poker logic that duplicates `gto-core` or `gto-solver`
+- No `unsafe`
+- No direct DOM logic
+- Keep the exported API narrow and stable
+
+### Web Milestones
+
+### M14. WASM Adapter Crate And Browser Session API
+
+Deliverables:
+
+- Add `crates/gto-web`
+- Expose a session-oriented API through `wasm-bindgen`
+- Support creating a seeded game, querying state, listing legal actions, applying human actions, and advancing bot actions
+- Provide a browser-safe way to load the default strategy artifact
+- Define the API boundary so it can be owned by a dedicated Web Worker
+- Keep `gto-core` and `gto-solver` compiling for `wasm32-unknown-unknown`
+
+Validation:
+
+- `gto-web` builds via `wasm-pack`
+- Rust tests cover session creation, state progression, and action legality through the WASM adapter boundary
+- Existing WASM compile checks still pass for `gto-core` and `gto-solver`
+
+### M15. Vite Frontend Skeleton
+
+Deliverables:
+
+- Add `web/` with `Vite`, `TypeScript`, and `Tailwind CSS`
+- Load and initialize the generated WASM package
+- Add a dedicated poker Web Worker that owns the WASM session and handles game commands
+- Add a thin typed frontend client that communicates with the worker via messages / Promises
+- Build a single-page app shell with:
+  - table state
+  - hero and villain cards where appropriate
+  - board cards
+  - stacks and pot
+  - legal action buttons
+  - hand history / action log
+- Support local development with no backend
+
+Validation:
+
+- Frontend builds successfully
+- Browser app initializes the WASM package and renders the initial game state
+- Worker round-trip tests cover command/response flow and initialization failures
+- TypeScript component tests or DOM tests cover initial render and basic loading/error states
+
+### M16. Playable Web Vertical Slice
+
+Deliverables:
+
+- Start, reset, and play complete hands in the browser
+- Human actions come only from the legal abstract action menu
+- Bot actions come from the Rust solver stack through WASM
+- Heavy bot actions execute in the dedicated worker rather than on the UI thread
+- Seeded sessions are reproducible
+- Friendly handling for WASM initialization failures and missing artifacts
+
+Validation:
+
+- Browser integration tests cover at least one complete seeded hand
+- Regression tests verify that the web adapter always returns legal actions
+- Manual smoke run confirms the site is playable end to end on desktop
+
+### M17. Production Web UX And Stronger Bot Mode
+
+Deliverables:
+
+- Refine the single-page layout for a desktop-first polished experience
+- Add explicit bot/play-mode configuration suitable for shipped play
+- Support the stronger production bot mode equivalent to CLI hybrid `--postflop-profile play`
+- Build the production site with optimized release-mode WASM artifacts
+- Keep the stronger production bot mode behind the worker-based execution path
+- Preserve a fallback mode if the stronger browser solver path proves too slow on some environments
+
+Validation:
+
+- Production build completes from a clean checkout
+- Manual desktop smoke run confirms that the stronger production bot mode is functional
+- Browser-facing tests cover mode selection and fallback behavior
+
+Non-goals for the web phase:
+
+- Adding a backend or online multiplayer
+- Introducing arbitrary chip-size input
+- Replacing the reusable Rust solver core with frontend logic
+- A separate web-only performance milestone; responsiveness should instead be validated inside the playable web milestones above
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion
