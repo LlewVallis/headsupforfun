@@ -1,16 +1,6 @@
 import type { HTMLAttributes } from 'react'
 
-const assetModules = import.meta.glob('../assets/cards/*.svg', {
-  eager: true,
-  import: 'default',
-}) as Record<string, string>
-
-const cardAssetByCode = Object.fromEntries(
-  Object.entries(assetModules).map(([path, assetUrl]) => {
-    const filename = path.split('/').pop()?.replace('.svg', '') ?? path
-    return [filename.toUpperCase(), assetUrl]
-  }),
-)
+import { cardAssetUrl } from '../lib/cardAssets'
 
 interface PokerCardProps extends HTMLAttributes<HTMLDivElement> {
   card?: string | null
@@ -27,7 +17,7 @@ export function PokerCard(props: PokerCardProps) {
   )
 
   if (hidden) {
-    const src = cardAssetByCode.BACK
+    const src = cardAssetUrl('BACK')
     return (
       <div {...rest} className={classes}>
         <img
@@ -58,7 +48,7 @@ export function PokerCard(props: PokerCardProps) {
   }
 
   const code = toAssetCode(card)
-  const src = cardAssetByCode[code]
+  const src = cardAssetUrl(code)
   if (!src) {
     return (
       <div

@@ -142,6 +142,9 @@ const advanceBotMock = vi.fn().mockResolvedValue(postActionSnapshot)
 const disposeMock = vi.fn()
 const playCueMock = vi.fn()
 const disposeAudioMock = vi.fn()
+const { preloadCardAssetsMock } = vi.hoisted(() => ({
+  preloadCardAssetsMock: vi.fn(() => vi.fn()),
+}))
 
 vi.mock('./lib/pokerClient', () => ({
   PokerClient: class {
@@ -180,6 +183,14 @@ vi.mock('./lib/tableAudio', () => ({
   },
 }))
 
+vi.mock('./lib/cardAssets', async () => {
+  const actual = await vi.importActual<typeof import('./lib/cardAssets')>('./lib/cardAssets')
+  return {
+    ...actual,
+    preloadCardAssets: preloadCardAssetsMock,
+  }
+})
+
 import App from './App'
 
 describe('App', () => {
@@ -196,6 +207,7 @@ describe('App', () => {
     disposeMock.mockClear()
     playCueMock.mockReset()
     disposeAudioMock.mockReset()
+    preloadCardAssetsMock.mockClear()
     ;(globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 7
   })
 
@@ -229,6 +241,7 @@ describe('App', () => {
     render(<App />)
     await screen.findByRole('button', { name: 'Call' })
 
+    expect(preloadCardAssetsMock).toHaveBeenCalledTimes(1)
     expect(initMock).toHaveBeenCalledWith({
       seed: 7,
       humanSeat: 'button',

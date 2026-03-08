@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { PokerCard } from './components/PokerCard'
 import { PokerChipMark } from './components/PokerChipMark'
+import { preloadCardAssets } from './lib/cardAssets'
 import { PokerClient } from './lib/pokerClient'
 import { BOT_ACTION_BUBBLE_MS, BOARD_REVEAL_STEP_MS } from './lib/timing'
 import {
@@ -49,10 +50,12 @@ function App() {
   const [matchRecord, setMatchRecord] = useState<MatchRecord>({ wins: 0, losses: 0 })
 
   useEffect(() => {
+    const disposeCardPreload = preloadCardAssets()
     tableAudioRef.current = createTableAudio()
     void recreateClientAndInitialize(buildPlayerSessionConfig())
 
     return () => {
+      disposeCardPreload()
       clearBotBubbleTimer()
       disposeClient()
       tableAudioRef.current?.dispose()
