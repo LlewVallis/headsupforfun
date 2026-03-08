@@ -9,6 +9,10 @@ rust-version.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[[bench]]
+name = "blueprint_smoke"
+harness = false
+
 [features]
 default = ["std", "serde"]
 parallel = []
@@ -19,3 +23,6 @@ std = ["gto-core/std"]
 gto-core = { path = "../gto-core", default-features = false }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }

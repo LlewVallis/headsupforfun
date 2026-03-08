@@ -9,6 +9,10 @@ rust-version.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[[bench]]
+name = "hand_eval_smoke"
+harness = false
+
 [features]
 default = ["std"]
 std = []
@@ -20,4 +24,5 @@ rand_chacha = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 proptest = { workspace = true }

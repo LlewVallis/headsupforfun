@@ -16,6 +16,7 @@ const SLOW_TIMEOUT_SECS: u64 = 300;
 const WASM_TIMEOUT_SECS: u64 = 120;
 const TRAIN_SMOKE_TIMEOUT_SECS: u64 = 60;
 const TRAIN_DEV_TIMEOUT_SECS: u64 = 600;
+const BENCH_SMOKE_TIMEOUT_SECS: u64 = 120;
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 
@@ -137,6 +138,44 @@ fn run() -> Result<(), DynError> {
             &["run", "-p", "gto-cli", "--", "train-flop-demo", "--profile", "smoke"],
             timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
         ),
+        "bench-smoke" => run_cargo(
+            &workspace_root,
+            &[
+                "bench",
+                "-p",
+                "gto-core",
+                "--bench",
+                "hand_eval_smoke",
+                "--",
+                "--sample-size",
+                "10",
+                "--warm-up-time",
+                "0.05",
+                "--measurement-time",
+                "0.05",
+            ],
+            timeout.unwrap_or(BENCH_SMOKE_TIMEOUT_SECS),
+        )
+        .and_then(|_| {
+            run_cargo(
+                &workspace_root,
+                &[
+                    "bench",
+                    "-p",
+                    "gto-solver",
+                    "--bench",
+                    "blueprint_smoke",
+                    "--",
+                    "--sample-size",
+                    "10",
+                    "--warm-up-time",
+                    "0.05",
+                    "--measurement-time",
+                    "0.05",
+                ],
+                timeout.unwrap_or(BENCH_SMOKE_TIMEOUT_SECS),
+            )
+        }),
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -260,6 +299,7 @@ Usage:
   cargo xtask train-river-smoke [--timeout-secs <seconds>]
   cargo xtask train-turn-smoke [--timeout-secs <seconds>]
   cargo xtask train-flop-smoke [--timeout-secs <seconds>]
+  cargo xtask bench-smoke [--timeout-secs <seconds>]
 
 Commands:
   test-fast   Run the fast workspace test suite.
@@ -271,6 +311,7 @@ Commands:
   train-river-smoke Train only the bundled river demo artifact with the smoke profile.
   train-turn-smoke  Train only the bundled turn demo artifact with the smoke profile.
   train-flop-smoke  Train only the bundled flop demo artifact with the smoke profile.
+  bench-smoke Run small criterion benchmark slices for evaluator and blueprint lookup hot paths.
 "
     );
 }

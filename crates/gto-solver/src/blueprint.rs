@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::collections::HashMap;
 
 use gto_core::{
     Card, HandCategory, HandRank, HoldemHandState, HoldemStateError, HoleCards, Player,
@@ -229,6 +230,8 @@ impl FullHandBlueprintArtifact {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlueprintBot {
     artifact: FullHandBlueprintArtifact,
+    preflop_index: HashMap<PreflopContextKey, usize>,
+    postflop_index: HashMap<PostflopPolicyKey, usize>,
 }
 
 impl Default for BlueprintBot {
@@ -239,7 +242,24 @@ impl Default for BlueprintBot {
 
 impl BlueprintBot {
     pub fn new(artifact: FullHandBlueprintArtifact) -> Self {
-        Self { artifact }
+        let preflop_index = artifact
+            .preflop_policies
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.context, index))
+            .collect();
+        let postflop_index = artifact
+            .postflop_policies
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.key, index))
+            .collect();
+
+        Self {
+            artifact,
+            preflop_index,
+            postflop_index,
+        }
     }
 
     pub fn artifact(&self) -> &FullHandBlueprintArtifact {
@@ -270,7 +290,6 @@ impl BlueprintBot {
         let choice = if state.street() == Street::Preflop {
             let context = preflop_context_from_state(state)?;
             let policy = self
-                .artifact
                 .preflop_policy(context)
                 .ok_or(BlueprintBotError::MissingPreflopPolicy(context))?;
             self.choose_preflop_action(policy, state.player(bot_player).hole_cards, &legal)
@@ -278,7 +297,6 @@ impl BlueprintBot {
         } else {
             let key = postflop_policy_key(bot_player, state)?;
             let policy = self
-                .artifact
                 .postflop_policy(key)
                 .ok_or(BlueprintBotError::MissingPostflopPolicy(key))?;
             choose_policy_action(&policy.actions, &legal)
@@ -303,6 +321,18 @@ impl BlueprintBot {
         }
 
         resolve_action_kind(policy.default_action, legal).or_else(|| safe_fallback_action(legal))
+    }
+
+    fn preflop_policy(&self, context: PreflopContextKey) -> Option<&PreflopPolicyEntry> {
+        self.preflop_index
+            .get(&context)
+            .and_then(|index| self.artifact.preflop_policies.get(*index))
+    }
+
+    fn postflop_policy(&self, key: PostflopPolicyKey) -> Option<&PostflopPolicyEntry> {
+        self.postflop_index
+            .get(&key)
+            .and_then(|index| self.artifact.postflop_policies.get(*index))
     }
 }
 
@@ -1060,6 +1090,19 @@ mod tests {
         let key = postflop_policy_key(Player::Button, &state).unwrap();
         assert!(key.facing_bet);
         assert!(bot.artifact().postflop_policy(key).is_some());
+    }
+
+    #[test]
+    fn blueprint_bot_indexes_match_artifact_policy_scans() {
+        let bot = BlueprintBot::default();
+
+        for entry in &bot.artifact().preflop_policies {
+            assert_eq!(bot.preflop_policy(entry.context), Some(entry));
+        }
+
+        for entry in &bot.artifact().postflop_policies {
+            assert_eq!(bot.postflop_policy(entry.key), Some(entry));
+        }
     }
 
     #[test]
