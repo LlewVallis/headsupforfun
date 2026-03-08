@@ -1053,6 +1053,40 @@ Validation:
 - Regression tests prove the totals persist across in-app new-match flows but reset on a fresh page load.
 - Manual smoke run confirms the displayed totals remain correct across multiple completed matches in one browser session.
 
+### M27. Preflop Blueprint Strength Quick-Win Pass
+
+Goal:
+
+- Improve shipped preflop strength quickly within the existing blueprint architecture, without taking on true runtime preflop solving or long new training requirements.
+
+Deliverables:
+
+- Replace the current coarse hand-authored `StartingRanges` defaults with stronger chart-driven ranges that better match the existing abstract action menu.
+- Use the public RangeConverter `Heads-Up 100BB PokerStars Poker Charts` download as the primary published reference for the highest-frequency shipped branches:
+  - `SB RFI`
+  - `BB vs SB RFI`
+  - `SB vs BB 3bet`
+- Translate those published branches into the repo's existing `2.5bb` open / `10bb` 3-bet / `23bb` 4-bet style blueprint mapping, while leaving unsupported limp / iso / 5-bet branches explicitly heuristic until a fuller source is chosen.
+- Extend preflop policy lookup context beyond actor / limp / aggression-count / stack-depth so the blueprint can distinguish materially different facing-size branches without exploding into a full solver rewrite.
+- Keep the implementation artifact-backed and deterministic so CLI, web, and WASM surfaces continue to share one portable preflop policy path.
+- Preserve the current small abstraction-first philosophy; action-menu widening is not required for this milestone.
+- Add targeted regression tests for preflop chart coverage, branch selection, and representative premium / marginal / trash hand decisions.
+- Regenerate the bundled default full-hand blueprint artifact so the shipped bot actually uses the improved preflop blueprint.
+
+Validation:
+
+- Fast tests prove the updated preflop context key distinguishes the intended facing-size branches and still covers all current shipped preflop branches.
+- Regression tests prove representative hands map to stronger intended actions in open, defend, limp-iso, 3-bet, and 4-bet contexts.
+- Full-hand blueprint artifact generation remains bounded and deterministic in the normal developer loop.
+- CLI and web smoke tests still expose only legal abstract actions and remain reproducible under fixed seeds.
+
+Risk notes:
+
+- This milestone deliberately improves preflop policy quality without claiming true equilibrium solving.
+- Stronger charts can still be structurally wrong if the context model is too coarse; keep new branching explicit and tested.
+- Do not hide external chart assumptions inside `gto-core`; all preflop approximation policy remains a `gto-solver` artifact concern.
+- Because the chosen public source publishes simplified charts rather than the full underlying solver frequencies, any mapped or residual branches must be documented as approximations rather than exact equilibrium outputs.
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion
