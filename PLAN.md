@@ -242,7 +242,7 @@ Recommended order:
 - Every bug fix adds a regression test before or alongside the fix.
 - Default test commands must stay fast enough for constant use by an autonomous agent.
 - Slow tests and long training runs must be explicitly opt-in.
-- UI-facing milestones are not done until automated screenshot capture and manual visual inspection have both passed on the affected states.
+- UI-facing milestones are not done until automated screenshot capture has passed and the newly generated screenshots have been manually opened and inspected on the affected states.
 
 ### Test Layers
 
@@ -291,6 +291,7 @@ Recommended order:
 
 - Deterministic screenshot capture for important UI states
 - Manual inspection of those screenshots before closing visual/product-facing milestones
+- Running the screenshot command alone is insufficient; the captured images must actually be opened and reviewed
 - Manual release-preview inspection for layout, hierarchy, readability, and obvious animation issues
 
 #### Soak Tests
@@ -672,6 +673,7 @@ Principles:
 - Prefer browser integration coverage for real user flows instead of relying only on DOM snapshots
 - Add regression coverage for worker startup failures, artifact-load failures, and slow/failed bot action fallbacks
 - Require manual visual inspection of captured screenshots and a local browser run for product-facing UI changes
+- Treat screenshot review as an explicit test step, not an optional spot check
 - Keep the fast frontend test loop small enough for frequent use; reserve heavier Playwright scenarios for a slower explicit lane
 
 Screenshot workflow:
@@ -680,6 +682,7 @@ Screenshot workflow:
 - Write captured images to a predictable local path such as `web/artifacts/screenshots/`
 - Treat screenshot artifacts as a review tool, not a committed golden source by default
 - Re-capture and review key states whenever layout, visual hierarchy, card rendering, animation, or typography changes
+- The agent should open and inspect the fresh screenshot files after capture so visual regressions are caught before the milestone is considered complete
 
 ### Recommended Workspace Layout Update
 
