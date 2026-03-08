@@ -639,8 +639,9 @@ impl From<HoldemStateError> for WebSessionError {
 #[cfg(test)]
 mod tests {
     use super::{BrowserSession, WebBotMode, WebSeat, WebSessionConfig};
-    use gto_core::{HandPhase, HoldemConfig, HoldemHandState, PlayerAction};
+    use gto_core::{DeterministicRng, HandPhase, HoldemConfig, HoldemHandState, PlayerAction, rng_from_seed};
     use gto_solver::FullHandBlueprintArtifact;
+    use rand::Rng;
     use std::collections::BTreeSet;
 
     #[test]
@@ -832,6 +833,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn browser_session_randomized_opponent_stress_fast() {
+        let scenarios = [
+            (WebBotMode::Blueprint, WebSeat::Button, 11_u64),
+            (WebBotMode::Blueprint, WebSeat::BigBlind, 17_u64),
+            (WebBotMode::HybridFast, WebSeat::Button, 23_u64),
+            (WebBotMode::HybridFast, WebSeat::BigBlind, 29_u64),
+            (WebBotMode::HybridPlay, WebSeat::Button, 31_u64),
+            (WebBotMode::HybridPlay, WebSeat::BigBlind, 37_u64),
+        ];
+
+        for (bot_mode, human_seat, seed) in scenarios {
+            run_randomized_opponent_stress_case(bot_mode, human_seat, seed, 6, 48);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    // Intended for manual crash-hunting runs, preferably via:
+    // `cargo test -p gto-web browser_session_randomized_opponent_stress_soak --release -- --ignored`
+    fn browser_session_randomized_opponent_stress_soak() {
+        for bot_mode in [
+            WebBotMode::Blueprint,
+            WebBotMode::HybridFast,
+            WebBotMode::HybridPlay,
+        ] {
+            for human_seat in [WebSeat::Button, WebSeat::BigBlind] {
+                for seed in 0_u64..32 {
+                    run_randomized_opponent_stress_case(
+                        bot_mode,
+                        human_seat,
+                        10_000 + seed,
+                        12,
+                        64,
+                    );
+                }
+            }
+        }
+    }
+
     fn play_hand_to_terminal(session: &mut BrowserSession) {
         for _ in 0..32 {
             let snapshot = session.snapshot().unwrap();
@@ -923,5 +964,220 @@ mod tests {
             .expect("non-terminal snapshot should expose at least one legal action")
             .id
             .clone()
+    }
+
+    fn run_randomized_opponent_stress_case(
+        bot_mode: WebBotMode,
+        human_seat: WebSeat,
+        seed: u64,
+        hand_budget: usize,
+        action_budget: usize,
+    ) {
+        let mut session = BrowserSession::new(WebSessionConfig {
+            seed,
+            human_seat,
+            bot_mode,
+            ..WebSessionConfig::default()
+        })
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to create browser stress session for mode={bot_mode:?} seat={human_seat:?} seed={seed}: {error}"
+            )
+        });
+        let mut opponent_rng = rng_from_seed(seed ^ 0x9e37_79b9_7f4a_7c15);
+
+        for hand_index in 0..hand_budget {
+            play_randomized_hand_and_assert_invariants(
+                &mut session,
+                &mut opponent_rng,
+                bot_mode,
+                human_seat,
+                seed,
+                hand_index,
+                action_budget,
+            );
+
+            let terminal_snapshot = session.snapshot().unwrap_or_else(|error| {
+                panic!(
+                    "failed to snapshot terminal stress hand for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}: {error}"
+                )
+            });
+            assert_terminal_snapshot_invariants(
+                &terminal_snapshot,
+                bot_mode,
+                human_seat,
+                seed,
+                hand_index,
+            );
+
+            if hand_index + 1 >= hand_budget || terminal_snapshot.match_over {
+                break;
+            }
+
+            let next_snapshot = session.reset_hand().unwrap_or_else(|error| {
+                panic!(
+                    "failed to reset stress hand for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}: {error}"
+                )
+            });
+            if next_snapshot.terminal_summary.is_some() {
+                assert_terminal_snapshot_invariants(
+                    &next_snapshot,
+                    bot_mode,
+                    human_seat,
+                    seed,
+                    hand_index + 1,
+                );
+            } else {
+                assert_nonterminal_snapshot_invariants(
+                    &next_snapshot,
+                    bot_mode,
+                    human_seat,
+                    seed,
+                    hand_index + 1,
+                );
+            }
+        }
+    }
+
+    fn play_randomized_hand_and_assert_invariants(
+        session: &mut BrowserSession,
+        opponent_rng: &mut DeterministicRng,
+        bot_mode: WebBotMode,
+        human_seat: WebSeat,
+        seed: u64,
+        hand_index: usize,
+        action_budget: usize,
+    ) {
+        for action_index in 0..action_budget {
+            let snapshot = session.snapshot().unwrap_or_else(|error| {
+                panic!(
+                    "failed to snapshot stress session for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}: {error}"
+                )
+            });
+
+            if snapshot.terminal_summary.is_some() {
+                assert_terminal_snapshot_invariants(
+                    &snapshot,
+                    bot_mode,
+                    human_seat,
+                    seed,
+                    hand_index,
+                );
+                return;
+            }
+
+            assert_nonterminal_snapshot_invariants(
+                &snapshot,
+                bot_mode,
+                human_seat,
+                seed,
+                hand_index,
+            );
+
+            if snapshot.current_actor == Some(snapshot.bot_seat) {
+                session.advance_bot().unwrap_or_else(|error| {
+                    panic!(
+                        "bot advance failed for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}: {error}"
+                    )
+                });
+                continue;
+            }
+
+            assert_eq!(
+                snapshot.current_actor,
+                Some(snapshot.human_seat),
+                "non-terminal stress snapshot should have either bot or human as actor for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}"
+            );
+            let action_id = choose_random_human_action_id(&snapshot, opponent_rng);
+            session.apply_human_action(&action_id).unwrap_or_else(|error| {
+                panic!(
+                    "human action `{action_id}` failed for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index} action={action_index}: {error}"
+                )
+            });
+        }
+
+        panic!(
+            "stress hand exceeded action budget for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
+    }
+
+    fn choose_random_human_action_id(
+        snapshot: &super::WebSessionSnapshot,
+        opponent_rng: &mut DeterministicRng,
+    ) -> String {
+        let index = opponent_rng.random_range(0..snapshot.legal_actions.len());
+        snapshot.legal_actions[index].id.clone()
+    }
+
+    fn assert_nonterminal_snapshot_invariants(
+        snapshot: &super::WebSessionSnapshot,
+        bot_mode: WebBotMode,
+        human_seat: WebSeat,
+        seed: u64,
+        hand_index: usize,
+    ) {
+        assert!(
+            snapshot.terminal_summary.is_none(),
+            "expected non-terminal snapshot for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
+        assert!(
+            !snapshot.match_over || snapshot.current_actor.is_none(),
+            "non-terminal match-over snapshot should not expose an actor for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
+
+        match snapshot.current_actor {
+            Some(actor) if actor == snapshot.human_seat => {
+                assert!(
+                    !snapshot.legal_actions.is_empty(),
+                    "human turn should expose legal actions for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+                );
+                let ids = snapshot
+                    .legal_actions
+                    .iter()
+                    .map(|action| action.id.as_str())
+                    .collect::<Vec<_>>();
+                let unique_ids = ids.iter().copied().collect::<BTreeSet<_>>();
+                assert_eq!(
+                    ids.len(),
+                    unique_ids.len(),
+                    "human legal action ids should stay unique for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}: {:?}",
+                    snapshot.legal_actions
+                );
+            }
+            Some(actor) if actor == snapshot.bot_seat => {
+                assert!(
+                    snapshot.legal_actions.is_empty(),
+                    "bot turn should not expose human legal actions for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+                );
+            }
+            Some(actor) => panic!(
+                "unexpected actor {actor:?} for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+            ),
+            None => panic!(
+                "non-terminal snapshot should expose an actor for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+            ),
+        }
+    }
+
+    fn assert_terminal_snapshot_invariants(
+        snapshot: &super::WebSessionSnapshot,
+        bot_mode: WebBotMode,
+        human_seat: WebSeat,
+        seed: u64,
+        hand_index: usize,
+    ) {
+        assert!(
+            snapshot.terminal_summary.is_some(),
+            "terminal snapshot should expose a summary for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
+        assert!(
+            snapshot.legal_actions.is_empty(),
+            "terminal snapshot should not expose legal actions for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
+        assert_eq!(
+            snapshot.current_actor,
+            None,
+            "terminal snapshot should not expose an actor for mode={bot_mode:?} seat={human_seat:?} seed={seed} hand={hand_index}"
+        );
     }
 }

@@ -1087,6 +1087,40 @@ Risk notes:
 - Do not hide external chart assumptions inside `gto-core`; all preflop approximation policy remains a `gto-solver` artifact concern.
 - Because the chosen public source publishes simplified charts rather than the full underlying solver frequencies, any mapped or residual branches must be documented as approximations rather than exact equilibrium outputs.
 
+### M28. Worker-Facing Browser Session Stress Test
+
+Goal:
+
+- Add a deterministic stress harness that repeatedly drives the shipped browser-session bot path against a randomized opponent so rare session and worker-side crashes can be reproduced before they surface in the web UI.
+
+Deliverables:
+
+- Add a stress-oriented test helper in the browser-session path that plays repeated hands against a randomized legal-action opponent using deterministic seeding.
+- Cover a wide variety of spots by varying:
+  - session seed
+  - human seat
+  - shipped bot mode
+  - randomized legal action choice across the current abstract menu
+- Keep a bounded fast variant in the normal test loop and a longer soak variant opt-in so default development stays quick.
+- Assert lightweight session invariants during stress play where they are easy to check, such as:
+  - current actor and legal-actions consistency
+  - chosen action ids are present and unique
+  - terminal snapshots expose no legal actions
+  - reset-hand and repeated-hand progression remain valid across the session
+- Prefer testing the real `gto-web` browser-session path used by the worker rather than a mocked worker shell so crashes in match/session/bot integration are more likely to reproduce.
+
+Validation:
+
+- Fast tests prove deterministic repeated randomized-opponent play completes across representative seeds without panics or invalid snapshots.
+- Opt-in soak tests run substantially more seeded sessions and repeated hands to hunt rare crashes.
+- The intended long-run usage for the soak path is a release-mode command with an explicit timeout budget, so stress throughput stays practical during manual crash-hunting runs.
+- The stress helper reports enough seed / hand / bot-mode context that a failing case can be reproduced directly.
+
+Risk notes:
+
+- This milestone is aimed at robustness, not stronger strategy quality.
+- Passing soak tests does not prove the browser worker cannot fail, but it should reduce the chance of latent engine/session crashes escaping into the UI.
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion

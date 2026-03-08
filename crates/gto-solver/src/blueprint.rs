@@ -349,9 +349,23 @@ impl BlueprintBot {
     }
 
     fn preflop_policy(&self, context: PreflopContextKey) -> Option<&PreflopPolicyEntry> {
-        self.preflop_index
-            .get(&context)
-            .and_then(|index| self.artifact.preflop_policies.get(*index))
+        let mut candidate = context;
+
+        loop {
+            if let Some(entry) = self
+                .preflop_index
+                .get(&candidate)
+                .and_then(|index| self.artifact.preflop_policies.get(*index))
+            {
+                return Some(entry);
+            }
+
+            let Some(fallback_bucket) = fallback_preflop_facing_bucket(candidate.facing_bet_bucket)
+            else {
+                return None;
+            };
+            candidate.facing_bet_bucket = fallback_bucket;
+        }
     }
 
     fn postflop_policy(&self, key: PostflopPolicyKey) -> Option<&PostflopPolicyEntry> {
@@ -651,6 +665,46 @@ fn default_preflop_policies_for_bucket(
         PreflopPolicyEntry {
             context: PreflopContextKey {
                 actor: Player::Button,
+                prior_limp: true,
+                aggressive_actions: 1,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb31To7Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonRaiseVsIso,
+                    action: button_raise_vs_iso,
+                },
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonContinueVsIso,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::Button,
+                prior_limp: true,
+                aggressive_actions: 1,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb71To16Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonRaiseVsIso,
+                    action: button_raise_vs_iso,
+                },
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonContinueVsIso,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::Button,
                 prior_limp: false,
                 aggressive_actions: 2,
                 effective_stack_bucket: bucket,
@@ -684,6 +738,66 @@ fn default_preflop_policies_for_bucket(
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::ButtonContinueVsThreeBet,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::BigBlind,
+                prior_limp: true,
+                aggressive_actions: 2,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb31To7Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindFiveBetVsFourBet,
+                    action: BlueprintActionKind::AllIn,
+                },
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindContinueVsFourBet,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::BigBlind,
+                prior_limp: true,
+                aggressive_actions: 2,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb71To16Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindFiveBetVsFourBet,
+                    action: BlueprintActionKind::AllIn,
+                },
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindContinueVsFourBet,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::BigBlind,
+                prior_limp: true,
+                aggressive_actions: 2,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Over16Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindFiveBetVsFourBet,
+                    action: BlueprintActionKind::AllIn,
+                },
+                PreflopRangeRule {
+                    range: StartingRangeName::BigBlindContinueVsFourBet,
                     action: BlueprintActionKind::Call,
                 },
             ],
@@ -727,6 +841,52 @@ fn default_preflop_policies_for_bucket(
                     action: BlueprintActionKind::Call,
                 },
             ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::Button,
+                prior_limp: true,
+                aggressive_actions: 3,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb31To7Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonFourBetVsThreeBet,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::Button,
+                prior_limp: true,
+                aggressive_actions: 3,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Bb71To16Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![
+                PreflopRangeRule {
+                    range: StartingRangeName::ButtonFourBetVsThreeBet,
+                    action: BlueprintActionKind::Call,
+                },
+            ],
+        },
+        PreflopPolicyEntry {
+            context: PreflopContextKey {
+                actor: Player::Button,
+                prior_limp: true,
+                aggressive_actions: 3,
+                effective_stack_bucket: bucket,
+                facing_bet_bucket: PreflopFacingBetBucket::Over16Bb,
+            },
+            default_action: BlueprintActionKind::Fold,
+            rules: vec![PreflopRangeRule {
+                range: StartingRangeName::ButtonFourBetVsThreeBet,
+                action: BlueprintActionKind::Call,
+            }],
         },
         PreflopPolicyEntry {
             context: PreflopContextKey {
@@ -1177,6 +1337,20 @@ fn is_aggressive_action(action: PlayerAction) -> bool {
     )
 }
 
+fn fallback_preflop_facing_bucket(
+    bucket: PreflopFacingBetBucket,
+) -> Option<PreflopFacingBetBucket> {
+    match bucket {
+        PreflopFacingBetBucket::AllIn => Some(PreflopFacingBetBucket::Over16Bb),
+        PreflopFacingBetBucket::Over16Bb => Some(PreflopFacingBetBucket::Bb71To16Bb),
+        PreflopFacingBetBucket::Bb71To16Bb => Some(PreflopFacingBetBucket::Bb31To7Bb),
+        PreflopFacingBetBucket::Bb31To7Bb => Some(PreflopFacingBetBucket::UpTo3Bb),
+        PreflopFacingBetBucket::Unopened
+        | PreflopFacingBetBucket::Limped
+        | PreflopFacingBetBucket::UpTo3Bb => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use gto_core::{
@@ -1357,6 +1531,46 @@ mod tests {
 
         let action = bot.choose_action(Player::BigBlind, &state).unwrap();
         assert!(matches!(action, PlayerAction::RaiseTo(_)));
+    }
+
+    #[test]
+    fn limp_reraise_branch_has_button_and_big_blind_policy_coverage() {
+        let bot = BlueprintBot::default();
+        let mut button_vs_iso = HoldemHandState::new(
+            HoldemConfig::default(),
+            "As5s".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        button_vs_iso.apply_action(PlayerAction::Call).unwrap();
+        button_vs_iso.apply_action(PlayerAction::RaiseTo(400)).unwrap();
+
+        let button_context = preflop_context_from_state(&button_vs_iso).unwrap();
+        assert_eq!(button_context.actor, Player::Button);
+        assert!(button_context.prior_limp);
+        assert_eq!(button_context.aggressive_actions, 1);
+        assert_eq!(
+            button_context.facing_bet_bucket,
+            PreflopFacingBetBucket::Bb31To7Bb
+        );
+        assert!(bot.artifact().preflop_policy(button_context).is_some());
+        assert!(bot.choose_action(Player::Button, &button_vs_iso).is_ok());
+
+        let mut big_blind_vs_limp_reraise = button_vs_iso.clone();
+        big_blind_vs_limp_reraise
+            .apply_action(PlayerAction::RaiseTo(700))
+            .unwrap();
+
+        let big_blind_context = preflop_context_from_state(&big_blind_vs_limp_reraise).unwrap();
+        assert_eq!(big_blind_context.actor, Player::BigBlind);
+        assert!(big_blind_context.prior_limp);
+        assert_eq!(big_blind_context.aggressive_actions, 2);
+        assert_eq!(
+            big_blind_context.facing_bet_bucket,
+            PreflopFacingBetBucket::Bb31To7Bb
+        );
+        assert!(bot.artifact().preflop_policy(big_blind_context).is_some());
+        assert!(bot.choose_action(Player::BigBlind, &big_blind_vs_limp_reraise).is_ok());
     }
 
     #[test]
@@ -1650,6 +1864,28 @@ mod tests {
         assert_eq!(
             resolve_action_kind(BlueprintActionKind::Aggression3, &legal),
             Some(crate::AbstractAction::RaiseTo(300))
+        );
+    }
+
+    #[test]
+    fn preflop_policy_lookup_falls_back_to_nearest_smaller_facing_bucket() {
+        let bot = BlueprintBot::default();
+        let missing_context = PreflopContextKey {
+            actor: Player::BigBlind,
+            prior_limp: false,
+            aggressive_actions: 1,
+            effective_stack_bucket: EffectiveStackBucket::Bb76Plus,
+            facing_bet_bucket: PreflopFacingBetBucket::Over16Bb,
+        };
+        let expected_context = PreflopContextKey {
+            facing_bet_bucket: PreflopFacingBetBucket::Bb71To16Bb,
+            ..missing_context
+        };
+
+        assert!(bot.artifact().preflop_policy(missing_context).is_none());
+        assert_eq!(
+            bot.preflop_policy(missing_context),
+            bot.artifact().preflop_policy(expected_context)
         );
     }
 

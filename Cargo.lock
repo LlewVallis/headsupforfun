@@ -294,6 +294,7 @@ version = "0.1.0"
 dependencies = [
  "gto-core",
  "gto-solver",
+ "rand",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
