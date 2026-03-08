@@ -67,16 +67,16 @@ impl StartingRanges {
         Self {
             // Simplified chart-driven defaults anchored to public HU 100bb cash charts.
             button_open_raise_large: "QQ+,AKs,AKo,A5s,A4s,KQs".parse().unwrap(),
-            button_open_raise_small: "22+,A2s+,K2s+,Q4s+,J6s+,T6s+,96s+,86s+,75s+,64s+,53s+,43s,A2o+,K5o+,Q8o+,J8o+,T8o+,98o,87o".parse().unwrap(),
+            button_open_raise_small: "22+,A2s+,K2s+,Q2s+,J2s+,T2s+,92s+,82s+,72s+,62s+,52s+,42s+,32s,A2o+,K2o+,Q2o+,J4o+,T5o+,95o+,85o+,74o+".parse().unwrap(),
             button_open_limp: Range::empty(),
             big_blind_iso_raise_vs_limp: "77+,A8s+,KTs+,QTs+,JTs,T9s,98s,AJo+,KQo,A5s,A4s".parse().unwrap(),
-            big_blind_defend_vs_open: "22+,A2s+,K2s+,Q5s+,J7s+,T7s+,96s+,85s+,75s+,64s+,54s,A2o+,K7o+,Q9o+,J9o+,T9o".parse().unwrap(),
-            big_blind_three_bet_vs_open: "88+,ATs+,KTs+,QTs+,JTs,T9s,98s,AQo+,A5s,A4s,A3s,A2s,KQo".parse().unwrap(),
+            big_blind_defend_vs_open: "22+,A2s+,K2s+,Q2s+,J3s+,T4s+,95s+,85s+,74s+,64s+,54s,A2o+,K2o+,Q2o+,J4o+,T5o+,95o+,85o+,74o+".parse().unwrap(),
+            big_blind_three_bet_vs_open: "77+,A2s+,K8s+,Q9s+,J9s+,T8s+,97s+,87s,A6o+,K9o+,QTo+,JTo".parse().unwrap(),
             button_continue_vs_iso: "22+,A2s+,K8s+,Q9s+,J9s+,T8s+,98s,87s,76s,A8o+,KTo+,QTo+,JTo".parse().unwrap(),
             button_raise_vs_iso: "TT+,AJs+,AQo+,KQs,A5s,A4s".parse().unwrap(),
-            button_continue_vs_three_bet: "66+,A2s+,K9s+,QTs+,JTs,T9s,98s,87s,A9o+,KTo+,QJo".parse().unwrap(),
-            button_four_bet_vs_three_bet: "JJ+,AQs+,AKo,A5s,A4s,KQs".parse().unwrap(),
-            big_blind_continue_vs_four_bet: "TT+,AQs+,AJs,AKo,KQs".parse().unwrap(),
+            button_continue_vs_three_bet: "22+,A2s+,K5s+,Q7s+,J8s+,T8s+,97s+,87s,76s,A2o+,K8o+,Q7o+,J7o+,T8o+,98o,87o,76o".parse().unwrap(),
+            button_four_bet_vs_three_bet: "88+,ATs+,KQs,AQo+,A5s,A4s,A3s,A2s,KQo".parse().unwrap(),
+            big_blind_continue_vs_four_bet: "JJ+,AQs+,AJs,AKo,AKs,KQs,AQo".parse().unwrap(),
             big_blind_five_bet_vs_four_bet: "QQ+,AKs,AKo".parse().unwrap(),
         }
     }
@@ -620,7 +620,7 @@ fn default_preflop_policies_for_bucket(
             rules: vec![
                 PreflopRangeRule {
                     range: StartingRangeName::BigBlindThreeBetVsOpen,
-                    action: button_open_large,
+                    action: big_blind_three_bet,
                 },
                 PreflopRangeRule {
                     range: StartingRangeName::BigBlindDefendVsOpen,
@@ -1353,9 +1353,11 @@ fn fallback_preflop_facing_bucket(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use gto_core::{
-        Deck, HandPhase, HoldemConfig, HoldemHandState, HoleCards, Player, PlayerAction, Street,
-        default_rng,
+        Deck, HandPhase, HoldemConfig, HoldemHandState, HoleCards, Player, PlayerAction, Range,
+        Street, default_rng,
     };
 
     use super::{
@@ -1366,6 +1368,14 @@ mod tests {
         smoke_blueprint_profile,
     };
     use crate::abstract_actions;
+
+    fn union_len(ranges: &[&Range]) -> usize {
+        let mut combos = BTreeSet::new();
+        for range in ranges {
+            combos.extend(range.iter().copied());
+        }
+        combos.len()
+    }
 
     #[test]
     fn blueprint_artifact_json_round_trips() {
@@ -1499,9 +1509,33 @@ mod tests {
         let ranges = StartingRanges::smoke_default();
 
         assert!(ranges.button_open_raise_small.contains("9c8d".parse().unwrap()));
+        assert!(ranges.button_open_raise_small.contains("Jc4d".parse().unwrap()));
         assert!(ranges.button_open_limp.is_empty());
         assert!(ranges.big_blind_three_bet_vs_open.contains("As5s".parse().unwrap()));
-        assert!(ranges.button_continue_vs_three_bet.contains("9h8h".parse().unwrap()));
+        assert!(ranges.big_blind_defend_vs_open.contains("Qc4d".parse().unwrap()));
+        assert!(ranges.button_continue_vs_three_bet.contains("Ah5d".parse().unwrap()));
+        assert_eq!(
+            union_len(&[
+                &ranges.button_open_raise_large,
+                &ranges.button_open_raise_small,
+                &ranges.button_open_limp,
+            ]),
+            1_050
+        );
+        assert_eq!(
+            union_len(&[
+                &ranges.big_blind_defend_vs_open,
+                &ranges.big_blind_three_bet_vs_open,
+            ]),
+            978
+        );
+        assert_eq!(
+            union_len(&[
+                &ranges.button_continue_vs_three_bet,
+                &ranges.button_four_bet_vs_three_bet,
+            ]),
+            586
+        );
     }
 
     #[test]
@@ -1511,6 +1545,20 @@ mod tests {
             HoldemConfig::default(),
             "9c8d".parse().unwrap(),
             "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+
+        let action = bot.choose_action(Player::Button, &state).unwrap();
+        assert_eq!(action, PlayerAction::RaiseTo(250));
+    }
+
+    #[test]
+    fn blueprint_opens_wider_chart_driven_offsuit_hands_first_in() {
+        let bot = BlueprintBot::default();
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "Jc4d".parse().unwrap(),
+            "AsKh".parse().unwrap(),
         )
         .unwrap();
 
@@ -1531,6 +1579,52 @@ mod tests {
 
         let action = bot.choose_action(Player::BigBlind, &state).unwrap();
         assert!(matches!(action, PlayerAction::RaiseTo(_)));
+    }
+
+    #[test]
+    fn blueprint_defends_wider_big_blind_offsuit_hands_against_small_open() {
+        let bot = BlueprintBot::default();
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKh".parse().unwrap(),
+            "Qc4d".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(250)).unwrap();
+
+        let action = bot.choose_action(Player::BigBlind, &state).unwrap();
+        assert_eq!(action, PlayerAction::Call);
+    }
+
+    #[test]
+    fn blueprint_keeps_three_betting_polar_candidates_against_large_open() {
+        let bot = BlueprintBot::default();
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "QcJh".parse().unwrap(),
+            "As5s".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(700)).unwrap();
+
+        let action = bot.choose_action(Player::BigBlind, &state).unwrap();
+        assert!(matches!(action, PlayerAction::RaiseTo(_)));
+    }
+
+    #[test]
+    fn blueprint_continues_wider_button_offsuit_hands_versus_three_bet() {
+        let bot = BlueprintBot::default();
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "Ah5d".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(250)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(1_000)).unwrap();
+
+        let action = bot.choose_action(Player::Button, &state).unwrap();
+        assert_eq!(action, PlayerAction::Call);
     }
 
     #[test]
