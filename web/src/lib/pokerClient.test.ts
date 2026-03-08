@@ -301,6 +301,27 @@ describe('PokerClient', () => {
     expect(botTerminal.button.stack).toBe(0)
     botWinClient.dispose()
   })
+
+  it('supports a deterministic init-error scenario for page-reload recovery coverage', async () => {
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+      }
+    ).__GTO_TEST_SCENARIO__ = 'initError'
+
+    const client = new PokerClient()
+    expect(FakeWorker.instances).toHaveLength(0)
+
+    await expect(
+      client.init({
+        seed: 7,
+        humanSeat: 'button',
+        botMode: 'hybridPlay',
+      }),
+    ).rejects.toThrow('forced initialization failure for e2e')
+
+    client.dispose()
+  })
 })
 
 function expectWorker(): FakeWorker {

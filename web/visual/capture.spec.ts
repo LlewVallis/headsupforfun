@@ -31,7 +31,7 @@ test('capture stable desktop screenshots for visual review', async ({ page }) =>
   })
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'New match' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'New match' })).toHaveCount(0)
   await expect(
     page.getByRole('heading', { name: "Heads-Up Hold'em" }),
   ).toBeVisible()
@@ -55,14 +55,17 @@ test('capture stable desktop screenshots for visual review', async ({ page }) =>
   ).toHaveCount(5, { timeout: 5_000 })
   await capture(page, '04-terminal-hand.png')
 
-  await page.evaluate(() => {
-    delete (window as typeof window & { __GTO_TEST_SCENARIO__?: string }).__GTO_TEST_SCENARIO__
-    ;(window as typeof window & { __GTO_FORCE_WORKER_ERROR__?: string }).__GTO_FORCE_WORKER_ERROR__ =
-      'forced initialization failure for screenshot capture'
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem('__gto_capture_init_error_once__') === 'done') {
+      return
+    }
+    window.sessionStorage.setItem('__gto_capture_init_error_once__', 'done')
+    ;(window as typeof window & { __GTO_TEST_SCENARIO__?: string }).__GTO_TEST_SCENARIO__ =
+      'initError'
   })
-  await page.getByRole('button', { name: 'New match' }).click()
+  await page.reload()
   await expect(page.getByRole('alert')).toContainText(
-    'forced initialization failure for screenshot capture',
+    'forced initialization failure for e2e',
   )
   await capture(page, '05-worker-error.png')
 })

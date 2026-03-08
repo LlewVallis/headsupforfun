@@ -50,17 +50,18 @@ test('surfaces a live all-in button from the real worker-backed opening hand', a
 })
 
 test('shows a recoverable error when the table fails to initialize', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem('__gto_init_error_once__') === 'done') {
+      return
+    }
+    window.sessionStorage.setItem('__gto_init_error_once__', 'done')
+    ;(window as typeof window & { __GTO_TEST_SCENARIO__?: string }).__GTO_TEST_SCENARIO__ =
+      'initError'
+  })
   await page.goto('/')
 
-  await page.evaluate(() => {
-    ;(window as typeof window & { __GTO_FORCE_WORKER_ERROR__?: string }).__GTO_FORCE_WORKER_ERROR__ =
-      'forced initialization failure for e2e'
-  })
-
-  await page.getByRole('button', { name: 'New match' }).click()
-
   await expect(page.getByRole('alert')).toContainText('forced initialization failure for e2e')
-  await page.getByRole('button', { name: 'Reload table' }).click()
+  await page.getByRole('button', { name: 'Reload page' }).click()
 
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByLabel('Poker table')).toBeVisible()
@@ -72,7 +73,7 @@ test('keeps the player-facing app on the fixed hybrid-play experience', async ({
 
   await expect(page.getByText('Hybrid Play')).toHaveCount(0)
   await expect(page.getByLabel('Action tray')).not.toContainText('hybrid play mode')
-  await expect(page.getByRole('button', { name: 'New match' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New match' })).toHaveCount(0)
 })
 
 test('shows the flop while the bot thinks and then fades the action bubble', async ({ page }) => {
@@ -109,7 +110,7 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
   await expect(page.getByText(/Bot .*bb\./i)).toBeVisible()
 })
 
-test('plays the mapped table sounds for player action, board reveals, bot action, and new-hand reset', async ({ page }) => {
+test('plays the mapped table sounds for board reveals, bot action, and new-hand reset', async ({ page }) => {
   await page.addInitScript(() => {
     ;(
       window as typeof window & {
@@ -163,7 +164,7 @@ test('plays the mapped table sounds for player action, board reveals, bot action
   })
 
   expect(played.filter((value) => value.includes('card-turn-alt.mp3'))).toHaveLength(6)
-  expect(played.filter((value) => value.includes('bet.mp3'))).toHaveLength(3)
+  expect(played.filter((value) => value.includes('bet.mp3'))).toHaveLength(1)
   expect(played.filter((value) => value.includes('button-press.mp3'))).toHaveLength(0)
   expect(played.filter((value) => value.includes('card-tap.mp3'))).toHaveLength(0)
 })

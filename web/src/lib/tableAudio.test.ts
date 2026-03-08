@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { cueForActionLabel } from './tableAudio'
+import { createTableAudio, cueForActionLabel } from './tableAudio'
 
 describe('table audio cue mapping', () => {
   it('maps fold and check labels to their dedicated cues', () => {
@@ -26,5 +26,30 @@ describe('table audio cue mapping', () => {
   it('returns null for unknown text', () => {
     expect(cueForActionLabel(null)).toBeNull()
     expect(cueForActionLabel('Waiting')).toBeNull()
+  })
+
+  it('uses the dedicated card-turn file for fold cues', () => {
+    const createdPlayers: Array<{ src: string; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> }> = []
+
+    class FakeAudio {
+      currentTime = 0
+      muted = false
+      preload = ''
+      volume = 1
+      src: string
+      play = vi.fn(() => Promise.resolve())
+      pause = vi.fn()
+
+      constructor(src = '') {
+        this.src = src
+        createdPlayers.push(this)
+      }
+    }
+
+    const controller = createTableAudio({ Audio: FakeAudio } as unknown as typeof globalThis)
+    controller.playCue('fold')
+
+    expect(createdPlayers).toHaveLength(1)
+    expect(createdPlayers[0]?.src).toContain('audio/card-turn.mp3')
   })
 })

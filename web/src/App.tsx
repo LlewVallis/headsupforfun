@@ -69,10 +69,8 @@ function App() {
       const winner = completedMatchWinner(snapshot)
       if (winner === 'hero') {
         setMatchRecord((current) => ({ ...current, wins: current.wins + 1 }))
-        tableAudioRef.current?.playCue('matchWin')
       } else if (winner === 'bot') {
         setMatchRecord((current) => ({ ...current, losses: current.losses + 1 }))
-        tableAudioRef.current?.playCue('matchLoss')
       }
     }
 
@@ -133,8 +131,8 @@ function App() {
     await recreateClientAndInitialize(buildPlayerSessionConfig(), true)
   }
 
-  const handleRetry = async () => {
-    await handleNewMatch()
+  const handleRetry = () => {
+    window.location.reload()
   }
 
   const handleNextHand = async () => {
@@ -163,7 +161,6 @@ function App() {
     setError(null)
 
     try {
-      playActionCue(actionLabelForId(snapshot, actionId))
       const afterHumanSnapshot = await client.applyHumanAction(actionId)
       const botActsAfterHuman =
         !afterHumanSnapshot.terminalSummary &&
@@ -374,21 +371,13 @@ function App() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 md:justify-end">
-            <MatchRecordPanel wins={matchRecord.wins} losses={matchRecord.losses} />
             {snapshot ? (
               <div className="flex flex-wrap gap-2">
                 <InfoChip label={`Hand ${snapshot.handNumber}`} />
                 <InfoChip label="0.5 / 1 blinds" />
               </div>
             ) : null}
-            <button
-              type="button"
-              className="inline-flex min-h-10 items-center justify-center rounded-full bg-[linear-gradient(180deg,#efdca4,#d6ac56)] px-4 text-[0.78rem] font-semibold uppercase tracking-[0.16em] text-[#102116] shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition duration-150 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
-              onClick={handleNewMatch}
-              disabled={busy}
-            >
-              {loading ? 'Opening table...' : 'New match'}
-            </button>
+            <MatchRecordPanel wins={matchRecord.wins} losses={matchRecord.losses} />
           </div>
         </header>
 
@@ -400,10 +389,10 @@ function App() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[0.72rem] font-medium uppercase tracking-[0.22em] text-rose-100/82">
-                  Table reset needed
+                  Page reload needed
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/78 md:text-base">
-                  The table could not finish the last action. Start a fresh match.
+                  The table could not finish the last action. Reload the page to reopen the table.
                 </p>
                 <p className="mt-1 text-sm text-white/50">{error}</p>
               </div>
@@ -413,7 +402,7 @@ function App() {
                 onClick={handleRetry}
                 disabled={busy}
               >
-                Reload table
+                Reload page
               </button>
             </div>
           </section>
@@ -738,11 +727,6 @@ function fillBoardCards(cards: string[]): Array<string | null> {
     board.push(null)
   }
   return board
-}
-
-function actionLabelForId(snapshot: WebSessionSnapshot, actionId: string): string | null {
-  const action = snapshot.legalActions.find((entry) => entry.id === actionId)
-  return action?.label ?? null
 }
 
 function toErrorMessage(value: unknown): string {

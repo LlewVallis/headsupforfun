@@ -21,7 +21,11 @@ interface PokerClientBackend {
   dispose(): void
 }
 
-type TestScenario = 'flopRevealThenAction' | 'matchOverHeroWin' | 'matchOverBotWin'
+type TestScenario =
+  | 'flopRevealThenAction'
+  | 'matchOverHeroWin'
+  | 'matchOverBotWin'
+  | 'initError'
 
 export class PokerClient {
   private readonly backend: PokerClientBackend
@@ -157,6 +161,10 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
   private stage: 'opening' | 'afterHuman' | 'afterBot' | 'terminal' = 'opening'
 
   async init(config: WebSessionConfig): Promise<WebSessionSnapshot> {
+    if (this.scenario === 'initError') {
+      throw new Error('forced initialization failure for e2e')
+    }
+
     this.config = config
     this.handNumber = 1
     this.stage = 'opening'
@@ -251,6 +259,8 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
           default:
             throw new Error(`Test scenario does not support stage ${this.stage}`)
         }
+      case 'initError':
+        throw new Error('Init-error test scenario does not produce snapshots')
     }
   }
 
@@ -308,6 +318,7 @@ function readForcedTestScenario(): TestScenario | null {
     case 'flopRevealThenAction':
     case 'matchOverHeroWin':
     case 'matchOverBotWin':
+    case 'initError':
       return host.__GTO_TEST_SCENARIO__
     default:
       return null

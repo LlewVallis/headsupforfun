@@ -210,12 +210,12 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: "Heads-Up Hold'em" }),
     ).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'New match' })).toBeInTheDocument()
     expect(await screen.findByLabelText('Poker table')).toBeInTheDocument()
     expect(screen.getByLabelText('Hero panel')).toHaveTextContent('You')
     expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Bot')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(screen.queryByRole('button', { name: 'New match' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Credits')).toHaveTextContent('Vector-Playing-Cards')
     expect(screen.getByLabelText('Credits')).toHaveTextContent('murbar/jacks-or-better')
     expect(screen.queryByText('Current page')).not.toBeInTheDocument()
@@ -252,19 +252,15 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'All-in to 99.5 bb' })).toBeInTheDocument()
   })
 
-  it('shows a recoverable table-reset banner when initialization fails', async () => {
+  it('shows a page-reload prompt when initialization fails', async () => {
     initMock.mockRejectedValueOnce(new Error('init failed'))
 
     render(<App />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Table reset needed')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Page reload needed')
+    expect(screen.getByRole('alert')).toHaveTextContent('Reload the page to reopen the table.')
     expect(screen.getByRole('alert')).toHaveTextContent('init failed')
-
-    const user = userEvent.setup()
-    initMock.mockResolvedValueOnce(baseSnapshot)
-    await user.click(screen.getByRole('button', { name: 'Reload table' }))
-
-    expect(await screen.findByRole('button', { name: 'Call' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument()
   })
 
   it('shows the next-hand action when the hand is complete', async () => {
@@ -361,13 +357,7 @@ describe('App', () => {
       await new Promise((resolve) => window.setTimeout(resolve, BOT_ACTION_BUBBLE_MS + 100))
     })
 
-    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual([
-      'wager',
-      'cardDeal',
-      'cardDeal',
-      'cardDeal',
-      'wager',
-    ])
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['cardDeal', 'cardDeal', 'cardDeal', 'wager'])
     expect(screen.queryByText('Bets to 4.0 BB')).not.toBeInTheDocument()
     expect(screen.getByText('Pick your action')).toBeInTheDocument()
     expect(screen.getByText('Bot bets to 4.0 bb.')).toBeInTheDocument()
@@ -387,7 +377,7 @@ describe('App', () => {
     expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
-    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['wager', 'matchWin'])
+    expect(playCueMock).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Start new match' }))
 
@@ -396,7 +386,7 @@ describe('App', () => {
     expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
-    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['wager', 'matchWin', 'cardDeal'])
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['cardDeal'])
   })
 
   it('tracks completed bot match wins as player losses', async () => {
@@ -410,18 +400,11 @@ describe('App', () => {
     expect(
       await screen.findByRole('button', { name: 'Start new match' }, { timeout: 5_000 }),
     ).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses'))
+    await waitFor(() => expect(screen.getByLabelText('Match record')).toHaveTextContent('1'))
     expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
     expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
-    expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
-    expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
-    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual([
-      'wager',
-      'cardDeal',
-      'cardDeal',
-      'cardDeal',
-      'allIn',
-      'matchLoss',
-    ])
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['cardDeal', 'cardDeal', 'cardDeal', 'allIn'])
   })
 
   it('does not count ordinary terminal hands while the match is still running', async () => {

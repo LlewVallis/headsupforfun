@@ -6,12 +6,16 @@ https://github.com/murbar/jacks-or-better/tree/master/src/audio
 Adopted files:
 
 - `card-turn-alt.mp3` for new-hand and board-card deal cues
+- `card-turn.mp3` for fold cues
 - `button-press.mp3` for check cues
-- `card-tap.mp3` for fold cues
 - `bet.mp3` for call / bet / raise cues
 - `bet-max.mp3` for all-in cues
-- `win.mp3` for match-win cues
-- `game-over.mp3` for match-loss cues
+
+Additional upstream copies retained locally but not currently wired in the web app:
+
+- `card-tap.mp3`
+- `win.mp3`
+- `game-over.mp3`
 
 Upstream license:
 

@@ -4,8 +4,6 @@ export type TableAudioCue =
   | 'fold'
   | 'wager'
   | 'allIn'
-  | 'matchWin'
-  | 'matchLoss'
 
 export interface TableAudioController {
   playCue(cue: TableAudioCue): void
@@ -38,7 +36,7 @@ const CUE_CONFIG: Record<TableAudioCue, { path: string; volume: number }> = {
     volume: 0.36,
   },
   fold: {
-    path: 'audio/card-tap.mp3',
+    path: 'audio/card-turn.mp3',
     volume: 0.4,
   },
   wager: {
@@ -48,14 +46,6 @@ const CUE_CONFIG: Record<TableAudioCue, { path: string; volume: number }> = {
   allIn: {
     path: 'audio/bet-max.mp3',
     volume: 0.52,
-  },
-  matchWin: {
-    path: 'audio/win.mp3',
-    volume: 0.48,
-  },
-  matchLoss: {
-    path: 'audio/game-over.mp3',
-    volume: 0.46,
   },
 }
 
