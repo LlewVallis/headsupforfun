@@ -3,8 +3,9 @@ use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use gto_core::{
-    DEFAULT_RNG_SEED, Deck, DeterministicRng, HandOutcome, HandPhase, HoldemConfig,
-    HoldemHandState, HoleCards, Player, PlayerAction, Range, rng_from_seed,
+    DEFAULT_RNG_SEED, Deck, DeterministicRng, HandOutcome, HandPhase, HeadsUpMatchState,
+    HoldemConfig, HoldemHandState, HoleCards, MatchConfig, MatchPlayer, Player, PlayerAction,
+    Range, rng_from_seed,
 };
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
@@ -175,35 +176,45 @@ pub fn run_session<R: BufRead, W: Write>(
     } else {
         SessionBot::Stub(&stub_bot)
     };
-    let mut hand_number = 1usize;
+    let mut match_state = HeadsUpMatchState::new(
+        MatchConfig::new(
+            HoldemConfig::default().starting_stack,
+            HoldemConfig::default().small_blind,
+            HoldemConfig::default().big_blind,
+            MatchPlayer::PlayerOne,
+        )
+        .map_err(io::Error::other)?,
+    )
+    .map_err(io::Error::other)?;
 
     loop {
-        let human_role = if hand_number % 2 == 1 {
-            Player::Button
-        } else {
-            Player::BigBlind
-        };
-        let completed = play_single_hand(
+        let deal = DealtHand::deal(&mut rng)?;
+        let hand_number = match_state.hand_number() + 1;
+        let state = match_state
+            .start_next_hand(deal.button, deal.big_blind)
+            .map_err(io::Error::other)?;
+        let human_role = match_state.seat_for_player(MatchPlayer::PlayerOne);
+        let Some(final_state) = play_single_hand(
             input,
             output,
             session_bot,
-            &mut rng,
+            state,
+            deal,
             hand_number,
             human_role,
-        )?;
-        if !completed {
+        )?
+        else {
             break;
-        }
+        };
+        match_state.complete_hand(&final_state).map_err(io::Error::other)?;
 
         if let Some(max_hands) = config.max_hands {
-            if hand_number >= max_hands {
+            if hand_number >= max_hands as u64 {
                 break;
             }
-        } else if !prompt_play_again(input, output)? {
+        } else if match_state.match_over() || !prompt_play_again(input, output)? {
             break;
         }
-
-        hand_number += 1;
     }
 
     Ok(())
@@ -390,6 +401,8 @@ impl RiverDemoScenario {
         Self {
             spot: ScriptedRiverSpot {
                 config: HoldemConfig::default(),
+                button_starting_stack: None,
+                big_blind_starting_stack: None,
                 preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
@@ -476,6 +489,8 @@ impl TurnDemoScenario {
         Self {
             spot: ScriptedTurnSpot {
                 config: HoldemConfig::default(),
+                button_starting_stack: None,
+                big_blind_starting_stack: None,
                 preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
@@ -578,6 +593,8 @@ impl FlopDemoScenario {
         Self {
             spot: ScriptedFlopSpot {
                 config: HoldemConfig::default(),
+                button_starting_stack: None,
+                big_blind_starting_stack: None,
                 preflop_actions: vec![PlayerAction::Call, PlayerAction::Check],
                 flop: [
                     "Kc".parse().unwrap(),
@@ -960,13 +977,11 @@ fn play_single_hand<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     session_bot: SessionBot<'_>,
-    rng: &mut DeterministicRng,
-    hand_number: usize,
+    mut state: HoldemHandState,
+    deal: DealtHand,
+    hand_number: u64,
     human_role: Player,
-) -> io::Result<bool> {
-    let deal = DealtHand::deal(rng)?;
-    let mut state = HoldemHandState::new(HoldemConfig::default(), deal.button, deal.big_blind)
-        .map_err(io::Error::other)?;
+) -> io::Result<Option<HoldemHandState>> {
     let bot_role = human_role.opponent();
 
     writeln!(output, "\nHand {hand_number}")?;
@@ -986,10 +1001,10 @@ fn play_single_hand<R: BufRead, W: Write>(
                             human_role,
                             bot_role,
                         )? {
-                            return Ok(false);
+                            return Ok(None);
                         }
                     } else if !handle_human_turn(input, output, &mut state, human_role, bot_role)? {
-                        return Ok(false);
+                        return Ok(None);
                     }
                 } else {
                     let action = session_bot.choose_bot_action(bot_role, &state)?;
@@ -1006,7 +1021,7 @@ fn play_single_hand<R: BufRead, W: Write>(
             }
             HandPhase::Terminal { outcome } => {
                 render_outcome(output, &state, human_role, outcome)?;
-                return Ok(true);
+                return Ok(Some(state));
             }
         }
     }
@@ -2491,6 +2506,29 @@ mod tests {
         );
 
         assert_eq!(transcript, load_transcript_fixture("hybrid_fast_seed_7_one_hand.txt"));
+    }
+
+    #[test]
+    fn two_hand_session_rotates_seats_and_carries_bankrolls() {
+        let transcript = capture_session_transcript(
+            b"fold\nfold\n",
+            CliConfig {
+                seed: 19,
+                max_hands: Some(2),
+                bot_mode: CliBotMode::Stub,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert!(transcript.contains("Hand 1"));
+        assert!(transcript.contains("Hand 2"));
+        assert!(transcript.contains("You are the button."));
+        assert!(transcript.contains("You are the big-blind."));
+        assert!(
+            transcript.contains("You (big-blind): stack=9850"),
+            "expected second-hand bankroll carry in transcript:\n{transcript}"
+        );
     }
 
     #[test]
