@@ -82,7 +82,11 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
 
   await expect(page.locator('.action-bubble')).not.toContainText('Thinking', { timeout: 5_000 })
   await expect(page.locator('.action-bubble')).toHaveCount(1)
+  await expect(page.getByText('Pick your action')).toBeVisible()
+  await expect(page.getByText(/Solver Bot .*bb\./i)).toBeVisible()
   await expect(page.locator('.action-bubble')).toHaveCount(0, { timeout: 5_000 })
+  await expect(page.getByText('Pick your action')).toBeVisible()
+  await expect(page.getByText(/Solver Bot .*bb\./i)).toBeVisible()
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {

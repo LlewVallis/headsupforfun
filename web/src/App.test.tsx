@@ -238,6 +238,8 @@ describe('App', () => {
       })
 
       expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
+      expect(screen.getByText('Pick your action')).toBeInTheDocument()
+      expect(screen.getByText('Solver Bot bets to 4.0 bb.')).toBeInTheDocument()
     },
     10_000,
   )
@@ -257,5 +259,7 @@ describe('App', () => {
     })
 
     expect(screen.queryByText('Bets to 4.0 BB')).not.toBeInTheDocument()
+    expect(screen.getByText('Pick your action')).toBeInTheDocument()
+    expect(screen.getByText('Solver Bot bets to 4.0 bb.')).toBeInTheDocument()
   }, 10_000)
 })

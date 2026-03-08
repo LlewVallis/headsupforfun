@@ -76,10 +76,18 @@ function App() {
     return presentTerminalSummary(snapshot.terminalSummary, snapshot)
   }, [snapshot])
 
+  const latestBotActionLabel = useMemo(() => {
+    if (!snapshot) {
+      return null
+    }
+    return extractBotActionLabel(null, snapshot)
+  }, [snapshot])
+
   const boardCards = fillBoardCards(snapshot?.boardCards ?? [])
   const heroTurn = snapshot?.currentActor === snapshot?.humanSeat && !snapshot?.terminalSummary
-  const heroReady = heroTurn && botPresence.state === 'idle'
   const controlsLocked = busy || loading
+  const heroReady = heroTurn && !controlsLocked
+  const heroPromptTurn = heroTurn && (!busy || botPresence.state === 'action')
   const botBubble: SeatBubble | null =
     botPresence.state === 'thinking'
       ? { tone: 'thinking', label: 'Thinking' }
@@ -399,19 +407,19 @@ function App() {
                   </div>
                   <div className="mt-4 max-w-md">
                     <p className="text-[0.72rem] uppercase tracking-[0.26em] text-gold-300/80">
-                      {outcome ? 'Showdown' : heroReady ? 'Your move' : actionPrompt(snapshot, busy)}
+                      {outcome ? 'Showdown' : heroPromptTurn ? 'Your move' : actionPrompt(snapshot, busy)}
                     </p>
                     <h2 className="mt-1.5 text-[1.7rem] font-semibold tracking-[-0.04em] text-white md:text-[2.05rem]">
-                      {outcome ? outcome.headline : heroReady ? 'Pick your action' : 'Watch the bot respond'}
+                      {outcome ? outcome.headline : heroPromptTurn ? 'Pick your action' : 'Watch the bot respond'}
                     </h2>
                     <p className="mt-1 text-sm leading-5 text-white/68">
                       {outcome
                         ? outcome.detail
-                        : botPresence.state === 'action'
-                          ? `${botLabel()} ${botPresence.label.toLowerCase()}.`
-                          : heroReady
-                            ? 'Choose from the available abstract actions below the table.'
-                            : 'The next action will appear beside the bot seat.'}
+                        : heroPromptTurn
+                          ? latestBotActionLabel
+                            ? `${botLabel()} ${latestBotActionLabel.toLowerCase()}.`
+                            : 'Choose from the available abstract actions below the table.'
+                          : 'The next action will appear beside the bot seat.'}
                     </p>
                   </div>
                 </section>
@@ -422,7 +430,7 @@ function App() {
                   stack={hero.stack}
                   cards={hero.holeCards}
                   hiddenCards={false}
-                  active={heroReady && !controlsLocked}
+                  active={heroReady}
                   tone="hero"
                   align="bottom"
                 />
