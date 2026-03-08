@@ -868,6 +868,139 @@ Non-goals for the web phase:
 - A separate web-only performance milestone; responsiveness should instead be validated inside the playable web milestones above
 - Persistent cross-hand stack carry or uneven-stack match rules until the core session and solver model are extended to support them cleanly
 
+## Post-M20 Follow-On Plan
+
+These milestones extend the playable product in the most practical order:
+
+1. Widen the abstract action menu first, because it improves play quality and user agency with relatively low architectural risk.
+2. Add proper alternating blind/button flow across repeated hands next, because it is mostly session work and should be shared across CLI and web.
+3. Treat persistent cross-hand stacks as a separate multi-milestone effort, because it changes both the exact engine/session model and the solver assumptions around fixed `100bb` starting states.
+
+### M21. Planned Action Menu Expansion And Consistent All-In Availability
+
+Goal:
+
+- Bring the exposed action menu closer to the originally planned abstraction so the human and bot both have a more credible no-limit menu.
+
+Deliverables:
+
+- Expand the shipped abstraction profiles so the supported actions match the intended menu more closely:
+  - Preflop unopened: `fold`, `call`, `2.5bb`, `4bb`, `7bb`, `all-in`
+  - Postflop unopened: `check`, `33% pot`, `66% pot`, `100% pot`, `all-in`
+  - Facing a bet: `fold`, `call`, `2.5x raise`, `all-in`
+- Ensure the CLI and web UI both surface `all-in` whenever it is legal under the exact engine and included by the active abstraction profile
+- Align blueprint and hybrid bot menu exposure so the human-facing action set is consistent with the bot/query layer
+- Regenerate or update the bundled small default strategy artifact to match the widened abstraction
+
+Validation:
+
+- Exact-engine tests prove all-in remains legal exactly when expected for short-stack, full-raise, and capped-raise spots
+- Abstraction tests prove the widened menu only emits legal actions and does not duplicate all-in lines
+- CLI transcript tests cover the expanded preflop and postflop menus
+- Browser tests cover widened action menus and explicit all-in availability in representative states
+- Manual smoke run in CLI and web confirms the player can actually choose the richer menu without broken labels or missing actions
+
+Risk notes:
+
+- This is primarily abstraction/profile/artifact work, not a fundamental solver rewrite
+- It may modestly increase browser and runtime-solver latency because the decision tree is wider
+
+### M22. Shared Match Session With Alternating Button And Big Blind
+
+Goal:
+
+- Make repeated play feel like a real heads-up match by alternating who is on the button and who is in the big blind each hand.
+
+Deliverables:
+
+- Add an explicit reusable match/session layer above a single `HoldemHandState`
+- Alternate button and big blind assignment every hand in both CLI and web
+- Keep fresh per-hand `100bb` stacks for this milestone; stack carry remains out of scope here
+- Unify hand-start role assignment so CLI and web do not drift in seating behavior
+- Update transcript/history rendering so player labels remain clear as seats alternate
+
+Validation:
+
+- Unit and integration tests prove seat assignment alternates deterministically across hands
+- CLI transcript tests cover at least two hands with role rotation
+- Web session tests cover at least two hands with role rotation
+- Browser tests confirm the visible player/dealer indicators update correctly between hands
+
+Risk notes:
+
+- Low solver risk by itself
+- This milestone should land before persistent stacks so the match/session boundary is established first
+
+### M23. Persistent Match Bankrolls With Unequal Starting Stacks
+
+Goal:
+
+- Carry chips across hands so wins and losses change the next hand's starting stacks instead of resetting to fresh `100bb` each hand.
+
+Deliverables:
+
+- Extend the exact heads-up engine so a new hand can start from unequal per-player stacks rather than a single symmetric `starting_stack`
+- Add match-level bankroll accounting across hands for both CLI and web
+- Define heads-up match rules for:
+  - blind posting under short stacks
+  - all-in blind posting when necessary
+  - match termination when one player is bust
+- Preserve correctness for unequal-stack hands from blind posting through showdown
+
+Validation:
+
+- Exact-engine tests for unequal-stack hand starts, short blind posts, forced all-in blind posts, bust-out detection, and bankroll conservation across hands
+- CLI integration tests cover multi-hand bankroll carry
+- Web session tests cover bankroll carry and match-end states
+- Soak tests confirm no invalid states emerge from repeated uneven-stack hands
+
+Risk notes:
+
+- This is the first milestone that materially changes the exact engine model, not just the UI/session layer
+- It should be completed before attempting to claim stack-aware solver behavior
+
+### M24. Stack-Aware Strategy Compatibility And Solver Follow-Through
+
+Goal:
+
+- Make the bot architecture honest under persistent stacks instead of merely reusing the old fixed-`100bb` strategy everywhere.
+- Lock in the intended long-term product architecture:
+  - stack-aware offline preflop blueprinting
+  - runtime postflop solving
+
+Deliverables:
+
+- Review and update the blueprint and hybrid bot architecture so strategy selection accounts for uneven effective stacks
+- Keep preflop artifact/blueprint-first rather than introducing true runtime preflop solving
+- Extend preflop policy/context modeling to include coarse effective-stack-depth information instead of assuming one fixed-stack regime
+- Introduce explicit effective-stack buckets for preflop strategy selection, for example:
+  - `<=15bb`
+  - `16-25bb`
+  - `26-40bb`
+  - `41-75bb`
+  - `76bb+`
+- Update postflop runtime-solver spot construction so scripted spots and rebuilt states remain valid under unequal starting stacks
+- Define the stack-aware hybrid architecture explicitly:
+  - preflop decisions come from offline generated blueprint artifacts keyed by coarse stack-depth context
+  - postflop decisions continue to use the hybrid runtime solver path
+- Decide and document the approximation policy for unsupported or thinly covered stack depths, such as mapping them into the nearest coarse depth band with explicit fallback behavior
+- Version any affected strategy artifacts or policy schemas if compatibility changes are required
+
+Validation:
+
+- Regression tests prove stack-aware policy lookup works across multiple depth bands
+- Runtime postflop solver tests cover unequal-stack spots reconstructed from live match state
+- Artifact compatibility tests distinguish older fixed-stack artifacts from newer stack-aware ones
+- Training/build tests prove stack-aware preflop blueprint artifacts can still be generated in bounded `smoke` form for agent workflows
+- Manual smoke runs in CLI and web confirm the bot remains playable through a multi-hand uneven-stack match
+
+Risk notes:
+
+- This is the highest solver-architecture-risk milestone in the current roadmap
+- Preflop is the hardest area because the current blueprint context is not stack-aware
+- Runtime preflop solving remains out of scope unless a later milestone explicitly revisits that decision
+- If a full stack-aware preflop blueprint is too expensive immediately, the depth-bucketing approximation and fallback policy must be explicit and tested rather than implicit
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion
