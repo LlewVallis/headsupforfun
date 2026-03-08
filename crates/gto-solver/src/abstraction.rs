@@ -299,7 +299,7 @@ fn is_preflop_opening_raise_spot(
 
 #[cfg(test)]
 mod tests {
-    use gto_core::{HoldemConfig, HoldemHandState};
+    use gto_core::{HoldemConfig, HoldemHandState, PlayerAction};
 
     use super::{
         AbstractionProfile, AbstractAction, OpeningSize, RaiseSize, StreetProfile, abstract_actions,
@@ -350,5 +350,174 @@ mod tests {
                 AbstractAction::RaiseTo(400),
             ]
         );
+    }
+
+    #[test]
+    fn abstraction_uses_pot_fraction_after_call_for_raises() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::BetTo(100)).unwrap();
+
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![RaiseSize::PotFractionAfterCallBps(10_000)],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert!(actions.contains(&AbstractAction::RaiseTo(500)));
+    }
+
+    #[test]
+    fn abstraction_deduplicates_equivalent_sizes() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::BigBlindMultipleBps(25_000),
+                    OpeningSize::BigBlindMultipleBps(25_000),
+                ],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                AbstractAction::Fold,
+                AbstractAction::Call,
+                AbstractAction::RaiseTo(250),
+            ]
+        );
+    }
+
+    #[test]
+    fn abstraction_maps_all_in_sizing_without_duplicates() {
+        let state = HoldemHandState::new(
+            HoldemConfig::new(400, 50, 100).unwrap(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![OpeningSize::BigBlindMultipleBps(40_000)],
+                raise_sizes: vec![],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert!(actions.contains(&AbstractAction::AllIn(400)));
+        assert!(!actions.contains(&AbstractAction::RaiseTo(400)));
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| **action == AbstractAction::AllIn(400))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn abstraction_offers_check_and_all_in_only_for_short_postflop_stacks() {
+        let config = HoldemConfig::new(150, 50, 100).unwrap();
+        let mut state =
+            HoldemHandState::new(config, "AsKd".parse().unwrap(), "QcJh".parse().unwrap())
+                .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                raise_sizes: vec![],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert_eq!(actions, vec![AbstractAction::Check, AbstractAction::AllIn(50)]);
     }
 }

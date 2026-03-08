@@ -576,6 +576,29 @@ mod tests {
     }
 
     #[test]
+    fn empty_board_round_trips() {
+        let board: Board = "".parse().expect("empty board should parse");
+
+        assert!(board.is_empty());
+        assert_eq!(board.to_string(), "");
+    }
+
+    #[test]
+    fn board_try_from_cards_rejects_more_than_five_cards() {
+        let error = Board::try_from_cards([
+            "As".parse().unwrap(),
+            "Kd".parse().unwrap(),
+            "Qc".parse().unwrap(),
+            "Jh".parse().unwrap(),
+            "Ts".parse().unwrap(),
+            "9d".parse().unwrap(),
+        ])
+        .expect_err("board should reject a sixth card");
+
+        assert_eq!(error.to_string(), "board cannot contain 6 cards");
+    }
+
+    #[test]
     fn card_mask_tracks_insertions() {
         let ace_spades: Card = "As".parse().unwrap();
         let king_diamonds: Card = "Kd".parse().unwrap();

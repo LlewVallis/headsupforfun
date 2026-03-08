@@ -916,9 +916,12 @@ fn effective_max_total(actor: &InternalPlayerState, opponent: &InternalPlayerSta
 
 #[cfg(test)]
 mod tests {
+    use rand::RngCore;
+
     use crate::{
-        Card, HandOutcome, HandPhase, HeadsUpPayout, HistoryEvent, HoldemConfig,
-        HoldemHandState, LegalActions, Player, PlayerAction, Street, WagerRange,
+        Card, CardMask, Deck, HandOutcome, HandPhase, HeadsUpPayout, HistoryEvent,
+        HoldemConfig, HoldemHandState, HoldemStateError, HoleCards, LegalActions, Player,
+        PlayerAction, Street, WagerRange, rng_from_seed,
     };
 
     fn sample_state_with_default_config() -> HoldemHandState {
@@ -1219,6 +1222,307 @@ mod tests {
                 outcome: HandOutcome::Uncontested { .. }
             })
         ));
+    }
+
+    #[test]
+    fn invalid_configs_and_duplicate_hole_cards_are_rejected() {
+        assert_eq!(
+            HoldemConfig::new(10_000, 0, 100).unwrap_err().to_string(),
+            "small blind must be positive"
+        );
+        assert_eq!(
+            HoldemConfig::new(10_000, 50, 0).unwrap_err().to_string(),
+            "big blind must be positive"
+        );
+        assert_eq!(
+            HoldemConfig::new(10_000, 100, 100).unwrap_err().to_string(),
+            "small blind must be less than big blind"
+        );
+        assert_eq!(
+            HoldemConfig::new(99, 50, 100).unwrap_err().to_string(),
+            "starting stack must be at least the big blind"
+        );
+        assert_eq!(
+            HoldemHandState::new(
+                HoldemConfig::default(),
+                "AsKd".parse().unwrap(),
+                "AsQc".parse().unwrap(),
+            )
+            .unwrap_err(),
+            HoldemStateError::DuplicateHoleCard {
+                card: "As".parse().unwrap(),
+            }
+        );
+    }
+
+    #[test]
+    fn legal_actions_and_board_deals_are_rejected_in_invalid_phases() {
+        let mut state = sample_state_with_default_config();
+
+        assert_eq!(
+            state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap_err(),
+            HoldemStateError::BoardNotExpected
+        );
+
+        state.apply_action(PlayerAction::Fold).unwrap();
+        assert_eq!(
+            state.legal_actions().unwrap_err(),
+            HoldemStateError::ActionNotAllowedInCurrentPhase
+        );
+        assert_eq!(
+            state.apply_action(PlayerAction::Call).unwrap_err(),
+            HoldemStateError::ActionNotAllowedInCurrentPhase
+        );
+        assert_eq!(
+            state.deal_turn("5s".parse().unwrap()).unwrap_err(),
+            HoldemStateError::BoardNotExpected
+        );
+    }
+
+    #[test]
+    fn unexpected_street_is_rejected_when_board_cards_are_due() {
+        let mut state = sample_state_with_default_config();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+
+        let error = state.deal_turn("5s".parse().unwrap()).unwrap_err();
+        assert_eq!(
+            error,
+            HoldemStateError::UnexpectedStreet {
+                expected: Street::Flop,
+                actual: Street::Turn,
+            }
+        );
+    }
+
+    #[test]
+    fn short_stack_postflop_can_only_open_jam_or_check() {
+        let config = HoldemConfig::new(150, 50, 100).unwrap();
+        let mut state =
+            HoldemHandState::new(config, "AsKd".parse().unwrap(), "QcJh".parse().unwrap())
+                .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
+
+        assert_eq!(
+            state.legal_actions().unwrap(),
+            LegalActions {
+                fold: false,
+                check: true,
+                call_amount: None,
+                bet_range: None,
+                raise_range: None,
+                all_in_to: Some(50),
+            }
+        );
+
+        state.apply_action(PlayerAction::AllIn).unwrap();
+        assert_eq!(state.pot(), 250);
+        assert_eq!(state.player(Player::BigBlind).stack, 0);
+        assert_eq!(
+            state.legal_actions().unwrap(),
+            LegalActions {
+                fold: true,
+                check: false,
+                call_amount: Some(50),
+                bet_range: None,
+                raise_range: None,
+                all_in_to: None,
+            }
+        );
+    }
+
+    #[test]
+    fn all_in_can_take_the_exact_full_raise_line() {
+        let config = HoldemConfig::new(300, 50, 100).unwrap();
+        let mut state =
+            HoldemHandState::new(config, "AsKd".parse().unwrap(), "QcJh".parse().unwrap())
+                .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state.deal_flop(parse_cards::<3>("2c3d4h")).unwrap();
+        state.apply_action(PlayerAction::BetTo(100)).unwrap();
+
+        state.apply_action(PlayerAction::AllIn).unwrap();
+
+        assert_eq!(state.pot(), 500);
+        assert_eq!(state.player(Player::Button).stack, 0);
+        assert_eq!(
+            state.legal_actions().unwrap(),
+            LegalActions {
+                fold: true,
+                check: false,
+                call_amount: Some(100),
+                bet_range: None,
+                raise_range: None,
+                all_in_to: None,
+            }
+        );
+    }
+
+    #[test]
+    fn random_legal_play_preserves_invariants() {
+        for seed in 0..64u64 {
+            play_random_hand_and_assert_invariants(seed);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn random_legal_play_soak_preserves_invariants() {
+        for seed in 0..1_024u64 {
+            play_random_hand_and_assert_invariants(seed);
+        }
+    }
+
+    fn play_random_hand_and_assert_invariants(seed: u64) {
+        let config = HoldemConfig::default();
+        let mut rng = rng_from_seed(seed);
+        let mut deck = Deck::standard();
+        deck.shuffle(&mut rng);
+
+        let button = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+        let big_blind = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+        let board = [
+            deck.draw().unwrap(),
+            deck.draw().unwrap(),
+            deck.draw().unwrap(),
+            deck.draw().unwrap(),
+            deck.draw().unwrap(),
+        ];
+        let mut state = HoldemHandState::new(config, button, big_blind).unwrap();
+        assert_state_invariants(&state);
+
+        loop {
+            match state.phase() {
+                HandPhase::BettingRound { .. } => {
+                    let action = choose_random_legal_action(&state, &mut rng);
+                    state.apply_action(action).unwrap();
+                }
+                HandPhase::AwaitingBoard { next_street } => match next_street {
+                    Street::Flop => state.deal_flop([board[0], board[1], board[2]]).unwrap(),
+                    Street::Turn => state.deal_turn(board[3]).unwrap(),
+                    Street::River => state.deal_river(board[4]).unwrap(),
+                    Street::Preflop => panic!("cannot await preflop board cards"),
+                },
+                HandPhase::Terminal { .. } => break,
+            }
+            assert_state_invariants(&state);
+        }
+
+        assert_state_invariants(&state);
+    }
+
+    fn choose_random_legal_action(
+        state: &HoldemHandState,
+        rng: &mut crate::DeterministicRng,
+    ) -> PlayerAction {
+        let legal = state.legal_actions().unwrap();
+        let mut options = Vec::new();
+        if legal.fold {
+            options.push(PlayerAction::Fold);
+        }
+        if legal.check {
+            options.push(PlayerAction::Check);
+        }
+        if legal.call_amount.is_some() {
+            options.push(PlayerAction::Call);
+        }
+        if let Some(range) = legal.bet_range {
+            options.push(PlayerAction::BetTo(range.min_total));
+            if range.max_total != range.min_total {
+                options.push(PlayerAction::BetTo(range.max_total));
+            }
+        }
+        if let Some(range) = legal.raise_range {
+            options.push(PlayerAction::RaiseTo(range.min_total));
+            if range.max_total != range.min_total {
+                options.push(PlayerAction::RaiseTo(range.max_total));
+            }
+        }
+        if legal.all_in_to.is_some() {
+            options.push(PlayerAction::AllIn);
+        }
+
+        let index = (rng.next_u64() as usize) % options.len();
+        options[index]
+    }
+
+    fn assert_state_invariants(state: &HoldemHandState) {
+        let config = state.config();
+        let button = state.player(Player::Button);
+        let big_blind = state.player(Player::BigBlind);
+
+        assert_eq!(
+            button.stack + button.total_contribution,
+            config.starting_stack,
+            "button stack conservation failed"
+        );
+        assert_eq!(
+            big_blind.stack + big_blind.total_contribution,
+            config.starting_stack,
+            "big blind stack conservation failed"
+        );
+        assert_eq!(
+            state.pot(),
+            button.total_contribution + big_blind.total_contribution,
+            "pot should equal total contributions"
+        );
+        assert!(!(button.folded && big_blind.folded), "both players cannot fold");
+
+        let mut seen = CardMask::empty();
+        for card in [button.hole_cards.first(), button.hole_cards.second()] {
+            assert!(seen.insert(card), "duplicate button hole card {card}");
+        }
+        for card in [big_blind.hole_cards.first(), big_blind.hole_cards.second()] {
+            assert!(seen.insert(card), "duplicate big blind hole card {card}");
+        }
+        for &card in state.board().cards() {
+            assert!(seen.insert(card), "duplicate board card {card}");
+        }
+
+        let expected_board_len = match state.street() {
+            Street::Preflop => 0,
+            Street::Flop => 3,
+            Street::Turn => 4,
+            Street::River => 5,
+        };
+        assert_eq!(state.board().len(), expected_board_len);
+
+        match state.phase() {
+            HandPhase::BettingRound { actor, .. } => {
+                assert_eq!(state.current_actor(), Some(actor));
+                assert!(!state.player(actor).folded);
+                let legal = state.legal_actions().unwrap();
+                if let Some(range) = legal.bet_range {
+                    assert!(range.min_total <= range.max_total);
+                }
+                if let Some(range) = legal.raise_range {
+                    assert!(range.min_total <= range.max_total);
+                }
+            }
+            HandPhase::AwaitingBoard { .. } => {
+                assert_eq!(state.current_actor(), None);
+                assert_eq!(
+                    state.legal_actions().unwrap_err(),
+                    HoldemStateError::ActionNotAllowedInCurrentPhase
+                );
+            }
+            HandPhase::Terminal { outcome } => {
+                assert_eq!(state.current_actor(), None);
+                assert_eq!(
+                    state.legal_actions().unwrap_err(),
+                    HoldemStateError::ActionNotAllowedInCurrentPhase
+                );
+                match outcome {
+                    HandOutcome::Uncontested { payout, .. }
+                    | HandOutcome::Showdown { payout, .. } => {
+                        assert_eq!(payout.player_one + payout.player_two, state.pot());
+                    }
+                }
+            }
+        }
     }
 
     fn parse_cards<const N: usize>(input: &str) -> [Card; N] {

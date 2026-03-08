@@ -431,7 +431,8 @@ pub fn preflop_context_from_state(
     let aggressive_actions = actions
         .iter()
         .filter(|action| is_aggressive_action(**action))
-        .count() as u8;
+        .count()
+        .min(4) as u8;
 
     Ok(PreflopContextKey {
         actor,
@@ -684,7 +685,8 @@ pub fn postflop_policy_key(
         aggressive_actions: actions_for_street(state, state.street())
             .iter()
             .filter(|action| is_aggressive_action(**action))
-            .count() as u8,
+            .count()
+            .min(3) as u8,
         stack_pressure: classify_stack_pressure(state, actor),
         made_hand: classify_made_hand(hole_cards, board),
         draw: classify_draw_bucket(hole_cards, board),
@@ -941,9 +943,10 @@ mod tests {
     };
 
     use super::{
-        BlueprintBot, DrawBucket, FullHandBlueprintArtifact, MadeHandBucket, PreflopContextKey,
+        BlueprintActionKind, BlueprintActionProbability, BlueprintBot, DrawBucket,
+        FullHandBlueprintArtifact, MadeHandBucket, PreflopContextKey, choose_policy_action,
         classify_draw_bucket, classify_made_hand, postflop_policy_key, preflop_context_from_state,
-        smoke_blueprint_profile,
+        resolve_action_kind, smoke_blueprint_profile,
     };
     use crate::abstract_actions;
 
@@ -954,6 +957,23 @@ mod tests {
         let decoded = FullHandBlueprintArtifact::from_json_str(&encoded).unwrap();
 
         assert_eq!(decoded, artifact);
+    }
+
+    #[test]
+    fn blueprint_artifact_rejects_unknown_format_versions() {
+        let mut artifact = FullHandBlueprintArtifact::smoke_default();
+        artifact.format_version += 1;
+        let encoded = serde_json::to_string(&artifact).unwrap();
+
+        let error = FullHandBlueprintArtifact::from_json_str(&encoded).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "unsupported blueprint artifact format version {}; expected {}",
+                FullHandBlueprintArtifact::FORMAT_VERSION + 1,
+                FullHandBlueprintArtifact::FORMAT_VERSION
+            )
+        );
     }
 
     #[test]
@@ -993,6 +1013,46 @@ mod tests {
     }
 
     #[test]
+    fn preflop_context_rejects_postflop_states() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let error = preflop_context_from_state(&state).unwrap_err();
+        assert!(matches!(
+            error,
+            super::BlueprintBotError::UnsupportedStreetState(Street::Flop)
+        ));
+    }
+
+    #[test]
+    fn preflop_context_caps_aggression_to_the_last_bucket() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(200)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(300)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(400)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(500)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(600)).unwrap();
+
+        let context = preflop_context_from_state(&state).unwrap();
+        assert_eq!(context.actor, Player::BigBlind);
+        assert_eq!(context.aggressive_actions, 4);
+    }
+
+    #[test]
     fn made_hand_and_draw_buckets_cover_common_cases() {
         let hole_cards = "AhQh".parse().unwrap();
         let flop = ["2h".parse().unwrap(), "7h".parse().unwrap(), "Kd".parse().unwrap()];
@@ -1003,6 +1063,45 @@ mod tests {
             &["Kd".parse().unwrap(), "7h".parse().unwrap(), "7d".parse().unwrap()],
         );
         assert_eq!(monster, MadeHandBucket::Monster);
+    }
+
+    #[test]
+    fn postflop_policy_key_rejects_preflop_states() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+
+        let error = postflop_policy_key(Player::Button, &state).unwrap_err();
+        assert!(matches!(
+            error,
+            super::BlueprintBotError::UnsupportedStreetState(Street::Preflop)
+        ));
+    }
+
+    #[test]
+    fn postflop_policy_key_caps_aggression_to_the_last_bucket() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::BetTo(100)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(200)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(300)).unwrap();
+        state.apply_action(PlayerAction::RaiseTo(400)).unwrap();
+
+        let key = postflop_policy_key(Player::BigBlind, &state).unwrap();
+        assert_eq!(key.aggressive_actions, 3);
+        assert!(BlueprintBot::default().artifact().postflop_policy(key).is_some());
     }
 
     #[test]
@@ -1035,11 +1134,69 @@ mod tests {
     }
 
     #[test]
+    fn blueprint_bot_rejects_out_of_turn_queries() {
+        let bot = BlueprintBot::default();
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+
+        let error = bot.choose_action(Player::BigBlind, &state).unwrap_err();
+        assert!(matches!(
+            error,
+            super::BlueprintBotError::NotActorsTurn {
+                expected: Some(Player::Button),
+                actual: Player::BigBlind,
+            }
+        ));
+    }
+
+    #[test]
     fn blueprint_bot_can_self_play_many_complete_hands_without_invalid_actions() {
         let bot = BlueprintBot::default();
         let mut rng = default_rng();
 
         for _ in 0..64 {
+            let mut deck = Deck::standard();
+            deck.shuffle(&mut rng);
+            let button = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+            let big_blind = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+            let board = [
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+            ];
+            let mut state = HoldemHandState::new(HoldemConfig::default(), button, big_blind).unwrap();
+
+            loop {
+                match state.phase() {
+                    HandPhase::BettingRound { actor, .. } => {
+                        let action = bot.choose_action(actor, &state).unwrap();
+                        state.apply_action(action).unwrap();
+                    }
+                    HandPhase::AwaitingBoard { next_street } => match next_street {
+                        Street::Flop => state.deal_flop([board[0], board[1], board[2]]).unwrap(),
+                        Street::Turn => state.deal_turn(board[3]).unwrap(),
+                        Street::River => state.deal_river(board[4]).unwrap(),
+                        Street::Preflop => panic!("cannot await preflop cards"),
+                    },
+                    HandPhase::Terminal { .. } => break,
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn blueprint_bot_self_play_soak_remains_stable() {
+        let bot = BlueprintBot::default();
+        let mut rng = default_rng();
+
+        for _ in 0..1_024 {
             let mut deck = Deck::standard();
             deck.shuffle(&mut rng);
             let button = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
@@ -1090,6 +1247,44 @@ mod tests {
         let key = postflop_policy_key(Player::Button, &state).unwrap();
         assert!(key.facing_bet);
         assert!(bot.artifact().postflop_policy(key).is_some());
+    }
+
+    #[test]
+    fn choose_policy_action_uses_next_legal_probability_then_safe_fallback() {
+        let legal = vec![crate::AbstractAction::Check, crate::AbstractAction::Call];
+        let policy = vec![
+            BlueprintActionProbability {
+                action: BlueprintActionKind::AllIn,
+                probability: 0.9,
+            },
+            BlueprintActionProbability {
+                action: BlueprintActionKind::Call,
+                probability: 0.1,
+            },
+        ];
+        assert_eq!(choose_policy_action(&policy, &legal), Some(crate::AbstractAction::Call));
+
+        let unreachable_policy = vec![BlueprintActionProbability {
+            action: BlueprintActionKind::Aggression3,
+            probability: 1.0,
+        }];
+        assert_eq!(
+            choose_policy_action(&unreachable_policy, &[crate::AbstractAction::Check]),
+            Some(crate::AbstractAction::Check)
+        );
+    }
+
+    #[test]
+    fn resolve_action_kind_uses_last_available_aggression_when_needed() {
+        let legal = vec![crate::AbstractAction::RaiseTo(300)];
+        assert_eq!(
+            resolve_action_kind(BlueprintActionKind::Aggression2, &legal),
+            Some(crate::AbstractAction::RaiseTo(300))
+        );
+        assert_eq!(
+            resolve_action_kind(BlueprintActionKind::Aggression3, &legal),
+            Some(crate::AbstractAction::RaiseTo(300))
+        );
     }
 
     #[test]

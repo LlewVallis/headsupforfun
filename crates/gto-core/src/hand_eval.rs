@@ -529,6 +529,15 @@ mod tests {
     }
 
     #[test]
+    fn showdown_rejects_incomplete_boards() {
+        let board: Board = "AhKhQh".parse().unwrap();
+        let error = resolve_holdem_showdown(&board, "JhTh".parse().unwrap(), "AcAd".parse().unwrap())
+            .expect_err("showdown should reject boards with fewer than five cards");
+
+        assert_eq!(error, ShowdownError::BoardMustContainFiveCards { actual_len: 3 });
+    }
+
+    #[test]
     fn award_pot_heads_up_pays_the_winner() {
         assert_eq!(
             award_pot_heads_up(64, Ordering::Greater, OddChipRecipient::PlayerOne),
@@ -542,6 +551,24 @@ mod tests {
             HeadsUpPayout {
                 player_one: 0,
                 player_two: 64,
+            }
+        );
+    }
+
+    #[test]
+    fn award_pot_heads_up_splits_odd_chips_by_configuration() {
+        assert_eq!(
+            award_pot_heads_up(101, Ordering::Equal, OddChipRecipient::PlayerOne),
+            HeadsUpPayout {
+                player_one: 51,
+                player_two: 50,
+            }
+        );
+        assert_eq!(
+            award_pot_heads_up(101, Ordering::Equal, OddChipRecipient::PlayerTwo),
+            HeadsUpPayout {
+                player_one: 50,
+                player_two: 51,
             }
         );
     }
