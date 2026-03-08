@@ -2005,6 +2005,9 @@ fn parse_user_action(input: &str) -> Result<Option<PlayerAction>, &'static str> 
     let amount = amount_text
         .parse::<u64>()
         .map_err(|_| "amount must be a positive integer")?;
+    if amount == 0 {
+        return Err("amount must be greater than zero");
+    }
 
     match keyword {
         "bet" | "b" => Ok(Some(PlayerAction::BetTo(amount))),
@@ -2025,8 +2028,11 @@ fn parse_human_abstract_action(
         return Ok(None);
     }
     if let Ok(index) = normalized.parse::<usize>() {
+        if index == 0 {
+            return Err("option number is out of range");
+        }
         let action = actions
-            .get(index.saturating_sub(1))
+            .get(index - 1)
             .copied()
             .ok_or("option number is out of range")?;
         return Ok(Some(action));
@@ -2168,14 +2174,17 @@ mod tests {
         CliConfig, FlopDemoOptions, FlopDemoScenario, RiverDemoOptions, RiverDemoScenario,
         TurnDemoOptions, TurnDemoScenario, default_flop_demo_artifact_path,
         default_full_hand_artifact_path, default_river_demo_artifact_path,
-        default_turn_demo_artifact_path, parse_session_args, run_flop_demo, run_river_demo,
+        default_turn_demo_artifact_path, display_path, parse_human_abstract_action,
+        parse_session_args, parse_user_action, prompt_play_again, run_flop_demo, run_river_demo,
         run_session, run_train_flop_demo, run_train_river_demo, run_train_turn_demo,
         run_turn_demo, startup_banner, workspace_root, write_flop_artifact,
         write_full_hand_artifact, write_river_artifact, write_turn_artifact,
     };
     use gto_solver::{
-        FlopTrainingProfile, FullHandBlueprintArtifact, RiverTrainingProfile, TurnTrainingProfile,
+        AbstractAction, FlopTrainingProfile, FullHandBlueprintArtifact, RiverTrainingProfile,
+        TurnTrainingProfile,
     };
+    use gto_core::PlayerAction;
     use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
@@ -2258,6 +2267,77 @@ mod tests {
                 blueprint_artifact_path: "fixtures/strategies/custom.json".into(),
             }
         );
+    }
+
+    #[test]
+    fn parse_session_args_rejects_invalid_values() {
+        let zero_hands = parse_session_args(&["--hands".into(), "0".into()]).unwrap_err();
+        assert_eq!(zero_hands, "hand count must be greater than zero");
+
+        let bad_seed = parse_session_args(&["--seed".into(), "abc".into()]).unwrap_err();
+        assert_eq!(bad_seed, "seed must be an unsigned integer");
+
+        let unknown = parse_session_args(&["--mystery".into()]).unwrap_err();
+        assert_eq!(unknown, "unknown play option");
+    }
+
+    #[test]
+    fn parse_user_action_rejects_zero_amounts_and_accepts_aliases() {
+        assert_eq!(
+            parse_user_action("bet 0").unwrap_err(),
+            "amount must be greater than zero"
+        );
+        assert_eq!(
+            parse_user_action("raise 0").unwrap_err(),
+            "amount must be greater than zero"
+        );
+        assert_eq!(parse_user_action("jam").unwrap(), Some(PlayerAction::AllIn));
+        assert_eq!(parse_user_action("b 250").unwrap(), Some(PlayerAction::BetTo(250)));
+        assert_eq!(
+            parse_user_action("raise-to 400").unwrap(),
+            Some(PlayerAction::RaiseTo(400))
+        );
+    }
+
+    #[test]
+    fn abstract_action_parser_rejects_zero_index_and_mismatched_actions() {
+        let actions = vec![AbstractAction::Fold, AbstractAction::Call];
+
+        assert_eq!(
+            parse_human_abstract_action("0", &actions).unwrap_err(),
+            "option number is out of range"
+        );
+        assert_eq!(
+            parse_human_abstract_action("check", &actions).unwrap_err(),
+            "that action is not in the solver menu for this spot"
+        );
+        assert_eq!(
+            parse_human_abstract_action("2", &actions).unwrap(),
+            Some(AbstractAction::Call)
+        );
+    }
+
+    #[test]
+    fn prompt_play_again_reprompts_after_invalid_answer() {
+        let mut output = Vec::new();
+        let answer = prompt_play_again(&mut Cursor::new(&b"maybe\ny\n"[..]), &mut output).unwrap();
+
+        assert!(answer);
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("Please answer `y` or `n`."));
+    }
+
+    #[test]
+    fn display_path_prefers_workspace_relative_paths() {
+        let workspace_relative = workspace_root()
+            .join("fixtures")
+            .join("strategies")
+            .join("full_hand_smoke.json");
+        assert_eq!(
+            display_path(&workspace_relative),
+            "fixtures/strategies/full_hand_smoke.json"
+        );
+        assert_eq!(display_path(&workspace_root()), ".");
     }
 
     #[test]

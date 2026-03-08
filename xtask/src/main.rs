@@ -336,3 +336,61 @@ impl Display for XtaskError {
 }
 
 impl Error for XtaskError {}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use super::{format_command, parse_timeout_secs, workspace_root};
+
+    #[test]
+    fn parse_timeout_secs_accepts_empty_arguments() {
+        assert_eq!(parse_timeout_secs(Vec::new()).unwrap(), None);
+    }
+
+    #[test]
+    fn parse_timeout_secs_accepts_valid_override() {
+        assert_eq!(
+            parse_timeout_secs(vec!["--timeout-secs".into(), "15".into()]).unwrap(),
+            Some(15)
+        );
+    }
+
+    #[test]
+    fn parse_timeout_secs_rejects_zero_and_bad_shapes() {
+        assert_eq!(
+            parse_timeout_secs(vec!["--timeout-secs".into(), "0".into()])
+                .unwrap_err()
+                .to_string(),
+            "timeout value must be greater than zero"
+        );
+        assert_eq!(
+            parse_timeout_secs(vec!["--bad".into(), "10".into()])
+                .unwrap_err()
+                .to_string(),
+            "expected optional arguments in the form `--timeout-secs <seconds>`"
+        );
+        assert_eq!(
+            parse_timeout_secs(vec!["--timeout-secs".into(), "abc".into()])
+                .unwrap_err()
+                .to_string(),
+            "timeout value must be a positive integer"
+        );
+    }
+
+    #[test]
+    fn format_command_renders_program_and_arguments() {
+        let rendered = format_command(
+            &OsString::from("cargo"),
+            &[OsString::from("test"), OsString::from("--workspace")],
+        );
+        assert_eq!(rendered, "cargo test --workspace");
+    }
+
+    #[test]
+    fn workspace_root_points_at_the_repository_root() {
+        let root = workspace_root().unwrap();
+        assert!(root.join("Cargo.toml").exists());
+        assert!(root.join("PLAN.md").exists());
+    }
+}
