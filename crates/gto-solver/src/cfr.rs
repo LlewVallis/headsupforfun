@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +87,50 @@ impl<G: ExtensiveGameState> CfrPlusSolver<G> {
 
     pub fn expected_value(&self) -> [f64; 2] {
         self.expected_value_from(self.root.clone())
+    }
+
+    pub fn checkpoint(&self) -> CfrCheckpoint<G::Action, G::InfoSet> {
+        CfrCheckpoint {
+            iterations: self.iterations,
+            entries: self
+                .entries
+                .iter()
+                .map(|(infoset, entry)| CfrInfoSetCheckpoint {
+                    infoset: infoset.clone(),
+                    actions: entry.actions.clone(),
+                    cumulative_regrets: entry.cumulative_regrets.clone(),
+                    strategy_sum: entry.strategy_sum.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_checkpoint(
+        root: G,
+        checkpoint: CfrCheckpoint<G::Action, G::InfoSet>,
+    ) -> Result<Self, CfrCheckpointError> {
+        let mut entries = HashMap::with_capacity(checkpoint.entries.len());
+        for entry in checkpoint.entries {
+            if entry.actions.len() != entry.cumulative_regrets.len()
+                || entry.actions.len() != entry.strategy_sum.len()
+            {
+                return Err(CfrCheckpointError::MismatchedVectorLengths);
+            }
+            entries.insert(
+                entry.infoset,
+                InfoSetEntry {
+                    actions: entry.actions,
+                    cumulative_regrets: entry.cumulative_regrets,
+                    strategy_sum: entry.strategy_sum,
+                },
+            );
+        }
+
+        Ok(Self {
+            root,
+            entries,
+            iterations: checkpoint.iterations,
+        })
     }
 
     fn cfr(&mut self, state: G, reach: [f64; 2]) -> [f64; 2] {
@@ -195,6 +240,39 @@ struct InfoSetEntry<A> {
     strategy_sum: Vec<f64>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CfrCheckpoint<A, I> {
+    pub iterations: u64,
+    pub entries: Vec<CfrInfoSetCheckpoint<A, I>>,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CfrInfoSetCheckpoint<A, I> {
+    pub infoset: I,
+    pub actions: Vec<A>,
+    pub cumulative_regrets: Vec<f64>,
+    pub strategy_sum: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CfrCheckpointError {
+    MismatchedVectorLengths,
+}
+
+impl Display for CfrCheckpointError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MismatchedVectorLengths => {
+                formatter.write_str("checkpoint entry had mismatched action and table lengths")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CfrCheckpointError {}
+
 impl<A> InfoSetEntry<A> {
     fn new(actions: Vec<A>) -> Self {
         let action_count = actions.len();
@@ -225,7 +303,7 @@ fn uniform(count: usize) -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CfrPlusSolver, ExtensiveGameState, GameNode};
+    use super::{CfrCheckpoint, CfrCheckpointError, CfrPlusSolver, ExtensiveGameState, GameNode};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     enum ToyAction {
@@ -237,13 +315,21 @@ mod tests {
     struct ToyInfoSet;
 
     #[derive(Debug, Clone, Copy, PartialEq)]
-    struct ToyState;
+    struct ToyState {
+        terminal: bool,
+    }
 
     impl ExtensiveGameState for ToyState {
         type Action = ToyAction;
         type InfoSet = ToyInfoSet;
 
         fn node(&self) -> GameNode<Self::Action, Self::InfoSet, Self> {
+            if self.terminal {
+                return GameNode::Terminal {
+                    utilities: [1.0, -1.0],
+                };
+            }
+
             GameNode::Decision {
                 player: 0,
                 infoset: ToyInfoSet,
@@ -253,16 +339,44 @@ mod tests {
 
         fn next_state(&self, action: &Self::Action) -> Self {
             match action {
-                ToyAction::Left | ToyAction::Right => *self,
+                ToyAction::Left | ToyAction::Right => Self { terminal: true },
             }
         }
     }
 
     #[test]
     fn solver_can_be_constructed() {
-        let solver = CfrPlusSolver::new(ToyState);
+        let solver = CfrPlusSolver::new(ToyState { terminal: false });
 
         assert_eq!(solver.iterations(), 0);
         assert_eq!(solver.infoset_count(), 0);
+    }
+
+    #[test]
+    fn solver_round_trips_through_a_checkpoint() {
+        let mut solver = CfrPlusSolver::new(ToyState { terminal: false });
+        solver.train_iterations(3);
+
+        let checkpoint = solver.checkpoint();
+        let restored = CfrPlusSolver::from_checkpoint(ToyState { terminal: false }, checkpoint.clone()).unwrap();
+
+        assert_eq!(restored.iterations(), checkpoint.iterations);
+        assert_eq!(restored.checkpoint(), checkpoint);
+    }
+
+    #[test]
+    fn checkpoint_rejects_mismatched_entry_lengths() {
+        let checkpoint = CfrCheckpoint {
+            iterations: 1,
+            entries: vec![super::CfrInfoSetCheckpoint {
+                infoset: ToyInfoSet,
+                actions: vec![ToyAction::Left],
+                cumulative_regrets: vec![0.0, 1.0],
+                strategy_sum: vec![1.0],
+            }],
+        };
+
+        let error = CfrPlusSolver::from_checkpoint(ToyState { terminal: false }, checkpoint).unwrap_err();
+        assert_eq!(error, CfrCheckpointError::MismatchedVectorLengths);
     }
 }

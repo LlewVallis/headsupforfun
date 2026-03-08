@@ -9,8 +9,8 @@ use gto_core::{
 };
 
 use crate::{
-    AbstractionProfile, AbstractAction, CfrPlusSolver, ExtensiveGameState, GameNode,
-    HoldemInfoSetKey, abstract_actions,
+    AbstractionProfile, AbstractAction, CfrCheckpoint, CfrCheckpointError, CfrPlusSolver,
+    ExtensiveGameState, GameNode, HoldemInfoSetKey, abstract_actions,
 };
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -196,6 +196,164 @@ impl RiverStrategyArtifact {
 
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Debug, Clone, PartialEq)]
+pub struct RiverTrainingCheckpoint {
+    pub format_version: u32,
+    pub spot: ScriptedRiverSpot,
+    pub button_range: Range,
+    pub big_blind_range: Range,
+    pub profile: AbstractionProfile,
+    pub checkpoint: CfrCheckpoint<AbstractAction, HoldemInfoSetKey>,
+}
+
+impl RiverTrainingCheckpoint {
+    pub const FORMAT_VERSION: u32 = 1;
+
+    fn validate_version(&self) -> Result<(), RiverCheckpointError> {
+        if self.format_version == Self::FORMAT_VERSION {
+            Ok(())
+        } else {
+            Err(RiverCheckpointError::UnsupportedFormatVersion {
+                expected: Self::FORMAT_VERSION,
+                actual: self.format_version,
+            })
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn to_json_string(&self) -> Result<String, RiverCheckpointError> {
+        self.validate_version()?;
+        serde_json::to_string_pretty(self)
+            .map_err(|error| RiverCheckpointError::Encode(error.to_string()))
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn from_json_str(input: &str) -> Result<Self, RiverCheckpointError> {
+        let checkpoint = serde_json::from_str::<Self>(input)
+            .map_err(|error| RiverCheckpointError::Decode(error.to_string()))?;
+        checkpoint.validate_version()?;
+        Ok(checkpoint)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RiverTrainingProfile {
+    Smoke,
+    Dev,
+    Full,
+}
+
+impl RiverTrainingProfile {
+    pub const fn total_iterations(self) -> u64 {
+        match self {
+            Self::Smoke => 2_000,
+            Self::Dev => 8_000,
+            Self::Full => 25_000,
+        }
+    }
+
+    pub const fn checkpoint_interval(self) -> u64 {
+        match self {
+            Self::Smoke => 500,
+            Self::Dev => 2_000,
+            Self::Full => 5_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RiverTrainingSession {
+    spot: ScriptedRiverSpot,
+    button_range: Range,
+    big_blind_range: Range,
+    profile: AbstractionProfile,
+    solver: CfrPlusSolver<RiverGameState>,
+}
+
+impl RiverTrainingSession {
+    pub fn new(
+        spot: ScriptedRiverSpot,
+        button_range: Range,
+        big_blind_range: Range,
+        profile: AbstractionProfile,
+    ) -> Result<Self, RiverSolveError> {
+        let definition = Rc::new(RiverGameDefinition::new(
+            spot.clone(),
+            button_range.clone(),
+            big_blind_range.clone(),
+            profile.clone(),
+        )?);
+
+        Ok(Self {
+            spot,
+            button_range,
+            big_blind_range,
+            profile,
+            solver: CfrPlusSolver::new(RiverGameState::root(definition)),
+        })
+    }
+
+    pub fn from_checkpoint(
+        checkpoint: RiverTrainingCheckpoint,
+    ) -> Result<Self, RiverTrainingError> {
+        checkpoint.validate_version()?;
+        let definition = Rc::new(RiverGameDefinition::new(
+            checkpoint.spot.clone(),
+            checkpoint.button_range.clone(),
+            checkpoint.big_blind_range.clone(),
+            checkpoint.profile.clone(),
+        )?);
+        let solver = CfrPlusSolver::from_checkpoint(
+            RiverGameState::root(definition),
+            checkpoint.checkpoint,
+        )?;
+
+        Ok(Self {
+            spot: checkpoint.spot,
+            button_range: checkpoint.button_range,
+            big_blind_range: checkpoint.big_blind_range,
+            profile: checkpoint.profile,
+            solver,
+        })
+    }
+
+    pub fn train_iterations(&mut self, iterations: u64) {
+        self.solver.train_iterations(iterations);
+    }
+
+    pub const fn iterations(&self) -> u64 {
+        self.solver.iterations()
+    }
+
+    pub fn checkpoint(&self) -> RiverTrainingCheckpoint {
+        RiverTrainingCheckpoint {
+            format_version: RiverTrainingCheckpoint::FORMAT_VERSION,
+            spot: self.spot.clone(),
+            button_range: self.button_range.clone(),
+            big_blind_range: self.big_blind_range.clone(),
+            profile: self.profile.clone(),
+            checkpoint: self.solver.checkpoint(),
+        }
+    }
+
+    pub fn strategy_artifact(&self) -> RiverStrategyArtifact {
+        self.solver_result().into_artifact(
+            self.spot.clone(),
+            self.button_range.clone(),
+            self.big_blind_range.clone(),
+            self.profile.clone(),
+        )
+    }
+
+    pub fn solver_result(&self) -> RiverSolverResult {
+        RiverSolverResult::from_strategy_snapshot(
+            self.solver.iterations(),
+            self.solver.average_strategy_snapshot(),
+        )
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RiverStrategyEntry {
     pub infoset: HoldemInfoSetKey,
     pub actions: Vec<RiverActionProbability>,
@@ -215,19 +373,9 @@ pub fn solve_river_spot(
     profile: AbstractionProfile,
     iterations: u64,
 ) -> Result<RiverSolverResult, RiverSolveError> {
-    let definition = Rc::new(RiverGameDefinition::new(
-        spot,
-        button_range,
-        big_blind_range,
-        profile,
-    )?);
-    let mut solver = CfrPlusSolver::new(RiverGameState::root(definition));
-    solver.train_iterations(iterations);
-
-    Ok(RiverSolverResult::from_strategy_snapshot(
-        solver.iterations(),
-        solver.average_strategy_snapshot(),
-    ))
+    let mut training = RiverTrainingSession::new(spot, button_range, big_blind_range, profile)?;
+    training.train_iterations(iterations);
+    Ok(training.solver_result())
 }
 
 #[derive(Debug, Clone)]
@@ -415,6 +563,65 @@ impl Display for RiverArtifactError {
 
 impl Error for RiverArtifactError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RiverCheckpointError {
+    UnsupportedFormatVersion { expected: u32, actual: u32 },
+    Encode(String),
+    Decode(String),
+}
+
+impl Display for RiverCheckpointError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedFormatVersion { expected, actual } => write!(
+                formatter,
+                "unsupported river checkpoint format version {actual}; expected {expected}"
+            ),
+            Self::Encode(error) => write!(formatter, "failed to encode river checkpoint: {error}"),
+            Self::Decode(error) => write!(formatter, "failed to decode river checkpoint: {error}"),
+        }
+    }
+}
+
+impl Error for RiverCheckpointError {}
+
+#[derive(Debug)]
+pub enum RiverTrainingError {
+    Solve(RiverSolveError),
+    Checkpoint(RiverCheckpointError),
+    Cfr(CfrCheckpointError),
+}
+
+impl Display for RiverTrainingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Solve(error) => write!(formatter, "{error}"),
+            Self::Checkpoint(error) => write!(formatter, "{error}"),
+            Self::Cfr(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl Error for RiverTrainingError {}
+
+impl From<RiverSolveError> for RiverTrainingError {
+    fn from(value: RiverSolveError) -> Self {
+        Self::Solve(value)
+    }
+}
+
+impl From<RiverCheckpointError> for RiverTrainingError {
+    fn from(value: RiverCheckpointError) -> Self {
+        Self::Checkpoint(value)
+    }
+}
+
+impl From<CfrCheckpointError> for RiverTrainingError {
+    fn from(value: CfrCheckpointError) -> Self {
+        Self::Cfr(value)
+    }
+}
+
 fn snapshot_to_entries(
     strategy: HashMap<HoldemInfoSetKey, Vec<(AbstractAction, f64)>>,
 ) -> Vec<RiverStrategyEntry> {
@@ -519,7 +726,10 @@ mod tests {
         StreetProfile,
     };
 
-    use super::{RiverStrategyArtifact, ScriptedRiverSpot, solve_river_spot};
+    use super::{
+        RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile,
+        RiverTrainingSession, ScriptedRiverSpot, solve_river_spot,
+    };
 
     fn river_profile_without_raises() -> AbstractionProfile {
         let preflop = StreetProfile {
@@ -702,5 +912,58 @@ mod tests {
                 RiverStrategyArtifact::FORMAT_VERSION,
             )
         );
+    }
+
+    #[test]
+    fn river_training_session_resume_matches_uninterrupted_training() {
+        let spot = sample_spot();
+        let button_range: Range = "QhJc".parse().unwrap();
+        let big_blind_range: Range = "KhKd".parse().unwrap();
+        let profile = river_profile_without_raises();
+
+        let mut uninterrupted = RiverTrainingSession::new(
+            spot.clone(),
+            button_range.clone(),
+            big_blind_range.clone(),
+            profile.clone(),
+        )
+        .unwrap();
+        uninterrupted.train_iterations(2_000);
+
+        let mut resumed = RiverTrainingSession::new(
+            spot.clone(),
+            button_range.clone(),
+            big_blind_range.clone(),
+            profile.clone(),
+        )
+        .unwrap();
+        resumed.train_iterations(1_000);
+        let checkpoint = resumed.checkpoint();
+        let json = checkpoint.to_json_string().unwrap();
+        let decoded = RiverTrainingCheckpoint::from_json_str(&json).unwrap();
+        let mut resumed = RiverTrainingSession::from_checkpoint(decoded).unwrap();
+        resumed.train_iterations(1_000);
+
+        let state = spot
+            .build_state("QhJc".parse().unwrap(), "KhKd".parse().unwrap())
+            .unwrap();
+        let infoset = HoldemInfoSetKey::from_state(
+            Player::Button,
+            "QhJc".parse().unwrap(),
+            &state,
+            Vec::new(),
+        );
+
+        assert_eq!(
+            uninterrupted.solver_result().choose_action_max(&infoset),
+            resumed.solver_result().choose_action_max(&infoset)
+        );
+    }
+
+    #[test]
+    fn training_profiles_order_iterations_and_checkpoints() {
+        assert!(RiverTrainingProfile::Smoke.total_iterations() < RiverTrainingProfile::Dev.total_iterations());
+        assert!(RiverTrainingProfile::Dev.total_iterations() < RiverTrainingProfile::Full.total_iterations());
+        assert!(RiverTrainingProfile::Smoke.checkpoint_interval() <= RiverTrainingProfile::Smoke.total_iterations());
     }
 }

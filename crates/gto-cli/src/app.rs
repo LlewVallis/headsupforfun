@@ -8,8 +8,9 @@ use gto_core::{
 };
 use gto_solver::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, RaiseSize,
-    RiverStrategyArtifact, ScriptedRiverSpot, SolverProfile, StreetProfile, StubBot,
-    abstract_actions, solve_river_spot,
+    RiverStrategyArtifact, RiverTrainingCheckpoint, RiverTrainingProfile, RiverTrainingSession,
+    ScriptedRiverSpot, SolverProfile, StreetProfile, StubBot, abstract_actions,
+    solve_river_spot,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,10 @@ pub fn run_stdio_with_args(args: &[String]) -> io::Result<()> {
             let options = parse_river_demo_args(&args[1..]).map_err(io::Error::other)?;
             run_river_demo(&mut input, &mut output, &options)
         }
+        Some("train-river-demo") => {
+            let options = parse_river_training_args(&args[1..]).map_err(io::Error::other)?;
+            run_train_river_demo(&mut output, &options)
+        }
         _ => run_session(&mut input, &mut output, CliConfig::default()),
     }
 }
@@ -46,7 +51,7 @@ pub fn startup_banner() -> String {
     let profile = SolverProfile::placeholder();
 
     format!(
-        "{name} {version}\nstatus: milestones M4-M7 CLI demos and river solver integration\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
+        "{name} {version}\nstatus: milestones M4-M8 CLI demos, artifacts, and resumable training\nsolver-profile: {profile}\nwasm-safe-core: {wasm_safe}",
         name = build.crate_name,
         version = build.crate_version,
         profile = profile.name(),
@@ -105,6 +110,23 @@ impl Default for RiverDemoOptions {
             solve_if_missing: true,
             write_artifact_path: None,
             no_play: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RiverTrainingOptions {
+    artifact_path: PathBuf,
+    checkpoint_path: PathBuf,
+    profile: RiverTrainingProfile,
+}
+
+impl Default for RiverTrainingOptions {
+    fn default() -> Self {
+        Self {
+            artifact_path: default_river_demo_artifact_path(),
+            checkpoint_path: default_river_demo_checkpoint_path(),
+            profile: RiverTrainingProfile::Smoke,
         }
     }
 }
@@ -369,6 +391,102 @@ fn parse_river_demo_args(args: &[String]) -> Result<RiverDemoOptions, &'static s
     Ok(options)
 }
 
+fn parse_river_training_args(args: &[String]) -> Result<RiverTrainingOptions, &'static str> {
+    let mut options = RiverTrainingOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--artifact" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--artifact`");
+                };
+                options.artifact_path = PathBuf::from(path);
+            }
+            "--checkpoint" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err("expected a path after `--checkpoint`");
+                };
+                options.checkpoint_path = PathBuf::from(path);
+            }
+            "--profile" => {
+                index += 1;
+                let Some(profile_name) = args.get(index) else {
+                    return Err("expected `smoke`, `dev`, or `full` after `--profile`");
+                };
+                options.profile = match profile_name.as_str() {
+                    "smoke" => RiverTrainingProfile::Smoke,
+                    "dev" => RiverTrainingProfile::Dev,
+                    "full" => RiverTrainingProfile::Full,
+                    _ => return Err("unknown training profile"),
+                };
+            }
+            _ => return Err("unknown train-river-demo option"),
+        }
+        index += 1;
+    }
+
+    Ok(options)
+}
+
+fn run_train_river_demo<W: Write>(
+    output: &mut W,
+    options: &RiverTrainingOptions,
+) -> io::Result<()> {
+    writeln!(output, "{}", startup_banner())?;
+
+    let scenario = RiverDemoScenario::default();
+    let mut session = match read_river_checkpoint(&options.checkpoint_path) {
+        Ok(checkpoint) => {
+            writeln!(
+                output,
+                "Resuming river demo training from {}",
+                options.checkpoint_path.display()
+            )?;
+            RiverTrainingSession::from_checkpoint(checkpoint).map_err(io::Error::other)?
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            writeln!(output, "Starting fresh river demo training")?;
+            RiverTrainingSession::new(
+                scenario.spot.clone(),
+                scenario.button_range.clone(),
+                scenario.big_blind_range.clone(),
+                scenario.profile.clone(),
+            )
+            .map_err(io::Error::other)?
+        }
+        Err(error) => return Err(error),
+    };
+
+    let target_iterations = options.profile.total_iterations();
+    let checkpoint_interval = options.profile.checkpoint_interval();
+    while session.iterations() < target_iterations {
+        let remaining = target_iterations - session.iterations();
+        let batch = remaining.min(checkpoint_interval);
+        session.train_iterations(batch);
+        write_river_checkpoint(&options.checkpoint_path, &session.checkpoint())?;
+        writeln!(
+            output,
+            "checkpoint: {} / {} iterations -> {}",
+            session.iterations(),
+            target_iterations,
+            options.checkpoint_path.display()
+        )?;
+    }
+
+    let artifact = session.strategy_artifact();
+    write_river_artifact(&options.artifact_path, &artifact)?;
+    writeln!(
+        output,
+        "artifact: {} iterations -> {}",
+        artifact.iterations,
+        options.artifact_path.display()
+    )?;
+
+    Ok(())
+}
+
 fn load_or_build_river_demo_artifact(
     scenario: &RiverDemoScenario,
     options: &RiverDemoOptions,
@@ -402,8 +520,28 @@ fn write_river_artifact(path: &Path, artifact: &RiverStrategyArtifact) -> io::Re
     fs::write(path, encoded)
 }
 
+fn read_river_checkpoint(path: &Path) -> io::Result<RiverTrainingCheckpoint> {
+    let encoded = fs::read_to_string(path)?;
+    RiverTrainingCheckpoint::from_json_str(&encoded).map_err(io::Error::other)
+}
+
+fn write_river_checkpoint(path: &Path, checkpoint: &RiverTrainingCheckpoint) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let encoded = checkpoint.to_json_string().map_err(io::Error::other)?;
+    fs::write(path, encoded)
+}
+
 fn default_river_demo_artifact_path() -> PathBuf {
     workspace_root().join("fixtures").join("strategies").join("river_demo.json")
+}
+
+fn default_river_demo_checkpoint_path() -> PathBuf {
+    workspace_root()
+        .join("fixtures")
+        .join("checkpoints")
+        .join("river_demo.checkpoint.json")
 }
 
 fn workspace_root() -> PathBuf {
@@ -815,8 +953,9 @@ fn draw_card(deck: &mut Deck) -> io::Result<gto_core::Card> {
 mod tests {
     use super::{
         CliConfig, RiverDemoOptions, RiverDemoScenario, default_river_demo_artifact_path,
-        run_river_demo, run_session, startup_banner, write_river_artifact,
+        run_river_demo, run_session, run_train_river_demo, startup_banner, write_river_artifact,
     };
+    use gto_solver::RiverTrainingProfile;
     use std::fs;
     use std::io::Cursor;
     use std::path::PathBuf;
@@ -827,7 +966,7 @@ mod tests {
         let banner = startup_banner();
 
         assert!(banner.contains("gto-solver"));
-        assert!(banner.contains("milestones M4-M7 CLI demos and river solver integration"));
+        assert!(banner.contains("milestones M4-M8 CLI demos, artifacts, and resumable training"));
     }
 
     #[test]
@@ -942,6 +1081,31 @@ mod tests {
         assert!(artifact_path.exists());
 
         let _ = fs::remove_file(artifact_path);
+    }
+
+    #[test]
+    fn river_training_command_writes_checkpoint_and_artifact() {
+        let artifact_path = unique_test_path("trained-river-demo.json");
+        let checkpoint_path = unique_test_path("trained-river-demo.checkpoint.json");
+        let mut output = Vec::new();
+
+        run_train_river_demo(
+            &mut output,
+            &super::RiverTrainingOptions {
+                artifact_path: artifact_path.clone(),
+                checkpoint_path: checkpoint_path.clone(),
+                profile: RiverTrainingProfile::Smoke,
+            },
+        )
+        .unwrap();
+
+        let transcript = String::from_utf8(output).unwrap();
+        assert!(transcript.contains("artifact: 2000 iterations"));
+        assert!(artifact_path.exists());
+        assert!(checkpoint_path.exists());
+
+        let _ = fs::remove_file(artifact_path);
+        let _ = fs::remove_file(checkpoint_path);
     }
 
     fn unique_test_path(name: &str) -> PathBuf {

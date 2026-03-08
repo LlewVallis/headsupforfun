@@ -14,6 +14,8 @@ type DynError = Box<dyn Error>;
 const FAST_TIMEOUT_SECS: u64 = 60;
 const SLOW_TIMEOUT_SECS: u64 = 300;
 const WASM_TIMEOUT_SECS: u64 = 120;
+const TRAIN_SMOKE_TIMEOUT_SECS: u64 = 60;
+const TRAIN_DEV_TIMEOUT_SECS: u64 = 600;
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 
@@ -82,6 +84,16 @@ fn run() -> Result<(), DynError> {
                 timeout.unwrap_or(WASM_TIMEOUT_SECS),
             )
         }
+        "train-smoke" => run_cargo(
+            &workspace_root,
+            &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "smoke"],
+            timeout.unwrap_or(TRAIN_SMOKE_TIMEOUT_SECS),
+        ),
+        "train-dev" => run_cargo(
+            &workspace_root,
+            &["run", "-p", "gto-cli", "--", "train-river-demo", "--profile", "dev"],
+            timeout.unwrap_or(TRAIN_DEV_TIMEOUT_SECS),
+        ),
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -200,12 +212,16 @@ Usage:
   cargo xtask test-slow [--timeout-secs <seconds>]
   cargo xtask check-wasm [--timeout-secs <seconds>]
   cargo xtask check-all [--timeout-secs <seconds>]
+  cargo xtask train-smoke [--timeout-secs <seconds>]
+  cargo xtask train-dev [--timeout-secs <seconds>]
 
 Commands:
   test-fast   Run the fast workspace test suite.
   test-slow   Run ignored tests intended for opt-in slow coverage.
   check-wasm  Compile-check gto-core and gto-solver for wasm32-unknown-unknown.
   check-all   Run test-fast and check-wasm in sequence.
+  train-smoke Train the bundled river demo artifact with the smoke profile.
+  train-dev   Train the bundled river demo artifact with the dev profile.
 "
     );
 }

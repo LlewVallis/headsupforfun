@@ -13,11 +13,16 @@ pub use abstraction::{
     AbstractionProfile, AbstractAction, HoldemInfoSetKey, OpeningSize, PublicStateKey,
     RaiseSize, StreetProfile, abstract_actions,
 };
-pub use cfr::{CfrPlusSolver, ExtensiveGameState, GameNode};
+pub use cfr::{
+    CfrCheckpoint, CfrCheckpointError, CfrInfoSetCheckpoint, CfrPlusSolver,
+    ExtensiveGameState, GameNode,
+};
 pub use kuhn::{KuhnAction, KuhnCard, KuhnInfoSet, KuhnState};
 pub use river::{
-    RiverActionProbability, RiverArtifactError, RiverSolveError, RiverSolverResult,
-    RiverStrategyArtifact, RiverStrategyEntry, ScriptedRiverSpot, solve_river_spot,
+    RiverActionProbability, RiverArtifactError, RiverCheckpointError, RiverSolveError,
+    RiverSolverResult, RiverStrategyArtifact, RiverStrategyEntry, RiverTrainingCheckpoint,
+    RiverTrainingError, RiverTrainingProfile, RiverTrainingSession, ScriptedRiverSpot,
+    solve_river_spot,
 };
 pub use tree::{PublicTree, PublicTreeEdge, PublicTreeNode, PublicTreeNodeKind, build_public_tree};
 
