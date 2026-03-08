@@ -409,13 +409,13 @@ function App() {
         {snapshot && hero && villain ? (
           <>
             <section
-              className="relative overflow-hidden rounded-[1.8rem] border border-[#f2dfb8]/7 bg-[linear-gradient(180deg,#040807,#020403)] px-3 py-4 shadow-[0_36px_130px_rgba(0,0,0,0.62)] md:px-6 md:py-5"
+              className="relative px-1 py-2 md:px-2 md:py-3"
               aria-label="Poker table"
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(231,199,115,0.07),transparent_20%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%,transparent_78%,rgba(0,0,0,0.22))]" />
-              <div className="table-felt-texture pointer-events-none absolute inset-[7%] rounded-[999px] border-[12px] border-[#7d5730] bg-[radial-gradient(circle_at_50%_34%,rgba(34,116,79,0.97),rgba(12,65,44,0.98)_58%,rgba(5,28,20,0.99)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_28px_70px_rgba(255,255,255,0.05),inset_0_-70px_100px_rgba(0,0,0,0.4),0_18px_50px_rgba(0,0,0,0.34)]" />
-              <div className="pointer-events-none absolute inset-[8.4%] rounded-[999px] border border-[#eed7ad]/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]" />
-              <div className="pointer-events-none absolute inset-x-[22%] bottom-[10%] h-10 rounded-full bg-[radial-gradient(circle,rgba(232,192,104,0.28),rgba(232,192,104,0.08)_45%,transparent_72%)] blur-xl" />
+              <div className="pointer-events-none absolute inset-x-[8%] inset-y-[3%] bg-[radial-gradient(circle_at_50%_0%,rgba(231,199,115,0.08),transparent_22%),radial-gradient(circle_at_50%_78%,rgba(9,32,23,0.28),transparent_40%)]" />
+              <div className="table-felt-texture pointer-events-none absolute inset-[5%] rounded-[999px] border-[12px] border-[#7d5730] bg-[radial-gradient(circle_at_50%_34%,rgba(34,116,79,0.97),rgba(12,65,44,0.98)_58%,rgba(5,28,20,0.99)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_28px_70px_rgba(255,255,255,0.05),inset_0_-70px_100px_rgba(0,0,0,0.4),0_24px_70px_rgba(0,0,0,0.42)]" />
+              <div className="pointer-events-none absolute inset-[6.4%] rounded-[999px] border border-[#eed7ad]/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]" />
+              <div className="pointer-events-none absolute inset-x-[22%] bottom-[8%] h-10 rounded-full bg-[radial-gradient(circle,rgba(232,192,104,0.28),rgba(232,192,104,0.08)_45%,transparent_72%)] blur-xl" />
 
               <div className="relative z-10 grid min-h-[620px] grid-rows-[auto_1fr_auto_auto] gap-3 pt-5 md:min-h-[680px] md:pt-6">
                 <PlayerSeat
