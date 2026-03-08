@@ -11,6 +11,7 @@ import {
   actionPrompt,
   botLabel,
   buildPlayerSessionConfig,
+  completedMatchWinner,
   currentStreetBotActionLabel,
   extractBotActionLabel,
   formatBigBlinds,
@@ -19,6 +20,7 @@ import {
   presentTerminalSummary,
   seatBadge,
 } from './lib/presentation'
+import { createTableAudio, cueForActionLabel } from './lib/tableAudio'
 import type { WebSessionConfig, WebSessionSnapshot } from './lib/pokerTypes'
 
 type BotPresence =
@@ -30,24 +32,52 @@ type SeatBubble =
   | { tone: 'thinking'; label: string }
   | { tone: 'action'; label: string }
 
+type MatchRecord = {
+  wins: number
+  losses: number
+}
+
 function App() {
   const clientRef = useRef<PokerClient | null>(null)
   const initRequestRef = useRef(0)
   const botBubbleTimerRef = useRef<number | null>(null)
+  const previousSnapshotRef = useRef<WebSessionSnapshot | null>(null)
+  const tableAudioRef = useRef<ReturnType<typeof createTableAudio> | null>(null)
   const [snapshot, setSnapshot] = useState<WebSessionSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [botPresence, setBotPresence] = useState<BotPresence>({ state: 'idle' })
+  const [matchRecord, setMatchRecord] = useState<MatchRecord>({ wins: 0, losses: 0 })
 
   useEffect(() => {
+    tableAudioRef.current = createTableAudio()
     void recreateClientAndInitialize(buildPlayerSessionConfig())
 
     return () => {
       clearBotBubbleTimer()
       disposeClient()
+      tableAudioRef.current?.dispose()
+      tableAudioRef.current = null
+      previousSnapshotRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const previousSnapshot = previousSnapshotRef.current
+    if (previousSnapshot && snapshot && !previousSnapshot.matchOver && snapshot.matchOver) {
+      const winner = completedMatchWinner(snapshot)
+      if (winner === 'hero') {
+        setMatchRecord((current) => ({ ...current, wins: current.wins + 1 }))
+        tableAudioRef.current?.playCue('matchWin')
+      } else if (winner === 'bot') {
+        setMatchRecord((current) => ({ ...current, losses: current.losses + 1 }))
+        tableAudioRef.current?.playCue('matchLoss')
+      }
+    }
+
+    previousSnapshotRef.current = snapshot
+  }, [snapshot])
 
   const hero = useMemo(() => {
     if (!snapshot) {
@@ -100,7 +130,7 @@ function App() {
   const handleNewMatch = async () => {
     clearBotBubbleTimer()
     setBotPresence({ state: 'idle' })
-    await recreateClientAndInitialize(buildPlayerSessionConfig())
+    await recreateClientAndInitialize(buildPlayerSessionConfig(), true)
   }
 
   const handleRetry = async () => {
@@ -118,6 +148,7 @@ function App() {
     await runClientAction(async () => {
       const nextSnapshot = await client.resetHand()
       setSnapshot(nextSnapshot)
+      tableAudioRef.current?.playCue('cardDeal')
     })
   }
 
@@ -132,6 +163,7 @@ function App() {
     setError(null)
 
     try {
+      playActionCue(actionLabelForId(snapshot, actionId))
       const afterHumanSnapshot = await client.applyHumanAction(actionId)
       const botActsAfterHuman =
         !afterHumanSnapshot.terminalSummary &&
@@ -158,13 +190,14 @@ function App() {
         await waitForNextPaint()
         const afterBotSnapshot = await client.advanceBot()
         await transitionSnapshot(previousSnapshot, afterBotSnapshot)
+        const botAction = extractBotActionLabel(previousSnapshot, afterBotSnapshot)
+        playActionCue(botAction)
 
         if (afterBotSnapshot.terminalSummary) {
           setBotPresence({ state: 'idle' })
           return
         }
 
-        const botAction = extractBotActionLabel(previousSnapshot, afterBotSnapshot)
         if (afterBotSnapshot.currentActor === afterBotSnapshot.botSeat) {
           setBotPresence({ state: 'idle' })
           previousSnapshot = afterBotSnapshot
@@ -189,13 +222,16 @@ function App() {
     }
   }
 
-  async function recreateClientAndInitialize(config: WebSessionConfig): Promise<void> {
+  async function recreateClientAndInitialize(
+    config: WebSessionConfig,
+    playDealCue = false,
+  ): Promise<void> {
     const previousClient = clientRef.current
     const client = new PokerClient()
     clientRef.current = client
     previousClient?.dispose()
 
-    await initializeSession(client, config)
+    await initializeSession(client, config, playDealCue)
   }
 
   function disposeClient(): void {
@@ -248,6 +284,7 @@ function App() {
       visibleCount += 1
     ) {
       await sleep(BOARD_REVEAL_STEP_MS)
+      tableAudioRef.current?.playCue('cardDeal')
       setSnapshot({
         ...nextSnapshot,
         boardCards: nextSnapshot.boardCards.slice(0, visibleCount),
@@ -259,6 +296,7 @@ function App() {
   async function initializeSession(
     client: PokerClient,
     config: WebSessionConfig,
+    playDealCue: boolean,
   ): Promise<void> {
     const requestId = initRequestRef.current + 1
     initRequestRef.current = requestId
@@ -273,6 +311,9 @@ function App() {
       }
       setSnapshot(nextSnapshot)
       setBotPresence({ state: 'idle' })
+      if (playDealCue) {
+        tableAudioRef.current?.playCue('cardDeal')
+      }
     } catch (err) {
       if (clientRef.current !== client || initRequestRef.current !== requestId) {
         return
@@ -303,6 +344,15 @@ function App() {
     }
   }
 
+  function playActionCue(label: string | null): void {
+    const cue = cueForActionLabel(label)
+    if (!cue) {
+      return
+    }
+
+    tableAudioRef.current?.playCue(cue)
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(53,113,85,0.35),transparent_28%),radial-gradient(circle_at_bottom,rgba(10,39,29,0.75),transparent_42%),linear-gradient(180deg,#07110d_0%,#071914_42%,#050a08_100%)] px-3 pb-8 pt-4 text-ivory-100 md:px-5 lg:px-6">
       <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-4">
@@ -324,6 +374,7 @@ function App() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 md:justify-end">
+            <MatchRecordPanel wins={matchRecord.wins} losses={matchRecord.losses} />
             {snapshot ? (
               <div className="flex flex-wrap gap-2">
                 <InfoChip label={`Hand ${snapshot.handNumber}`} />
@@ -510,6 +561,36 @@ function App() {
             </div>
           </section>
         )}
+
+        <footer
+          className="px-1 pb-1 pt-1 text-center text-[0.68rem] leading-5 text-white/38"
+          aria-label="Credits"
+        >
+          <p>
+            Cards based on{' '}
+            <a
+              className="text-white/54 transition hover:text-gold-300/86"
+              href="https://github.com/notpeter/Vector-Playing-Cards"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Vector-Playing-Cards
+            </a>{' '}
+            by notpeter, with original artwork credited upstream to Byron Knoll.
+          </p>
+          <p className="mt-1">
+            Table audio from{' '}
+            <a
+              className="text-white/54 transition hover:text-gold-300/86"
+              href="https://github.com/murbar/jacks-or-better/tree/master/src/audio"
+              target="_blank"
+              rel="noreferrer"
+            >
+              murbar/jacks-or-better
+            </a>{' '}
+            by Joel Bartlett, used under the MIT License.
+          </p>
+        </footer>
       </div>
     </main>
   )
@@ -624,12 +705,44 @@ function InfoChip(props: { label: string }) {
   )
 }
 
+function MatchRecordPanel(props: MatchRecord) {
+  return (
+    <section
+      className="rounded-[1.2rem] border border-white/10 bg-white/6 px-3.5 py-2.5 text-white/78 shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
+      aria-label="Match record"
+    >
+      <div className="flex items-baseline gap-3.5">
+        <ScoreValue label="Wins" value={props.wins} />
+        <ScoreValue label="Losses" value={props.losses} />
+      </div>
+    </section>
+  )
+}
+
+function ScoreValue(props: { label: string; value: number }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[0.62rem] uppercase tracking-[0.18em] text-white/44">
+        {props.label}
+      </span>
+      <strong className="text-[1.1rem] font-semibold tracking-[-0.04em] text-white">
+        {props.value}
+      </strong>
+    </div>
+  )
+}
+
 function fillBoardCards(cards: string[]): Array<string | null> {
   const board: Array<string | null> = [...cards]
   while (board.length < 5) {
     board.push(null)
   }
   return board
+}
+
+function actionLabelForId(snapshot: WebSessionSnapshot, actionId: string): string | null {
+  const action = snapshot.legalActions.find((entry) => entry.id === actionId)
+  return action?.label ?? null
 }
 
 function toErrorMessage(value: unknown): string {

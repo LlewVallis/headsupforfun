@@ -14,6 +14,8 @@ export interface PresentedOutcome {
   detail: string
 }
 
+export type MatchWinner = 'hero' | 'bot'
+
 export function buildPlayerSessionConfig(): WebSessionConfig {
   return {
     seed: readSessionSeedOverride() ?? generateSessionSeed(),
@@ -188,6 +190,25 @@ export function actionPrompt(snapshot: WebSessionSnapshot, busy: boolean): strin
   return 'Choose your move'
 }
 
+export function completedMatchWinner(
+  snapshot: Pick<WebSessionSnapshot, 'matchOver' | 'humanSeat' | 'botSeat' | 'button' | 'bigBlind'>,
+): MatchWinner | null {
+  if (!snapshot.matchOver) {
+    return null
+  }
+
+  const hero = playerForSeat(snapshot, snapshot.humanSeat)
+  const bot = playerForSeat(snapshot, snapshot.botSeat)
+  if (hero.stack > 0 && bot.stack === 0) {
+    return 'hero'
+  }
+  if (bot.stack > 0 && hero.stack === 0) {
+    return 'bot'
+  }
+
+  return null
+}
+
 type WebSeatToken = 'button' | 'big-blind'
 
 function titleCase(value: string): string {
@@ -210,6 +231,13 @@ function subjectForSeat(
   snapshot: Pick<WebSessionSnapshot, 'humanSeat' | 'botSeat'>,
 ): string {
   return seat === seatToken(snapshot.humanSeat) ? heroLabel() : botLabel()
+}
+
+function playerForSeat(
+  snapshot: Pick<WebSessionSnapshot, 'button' | 'bigBlind'>,
+  seat: WebSeat,
+) {
+  return seat === 'button' ? snapshot.button : snapshot.bigBlind
 }
 
 function winnerHeadline(

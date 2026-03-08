@@ -88,11 +88,60 @@ const postActionSnapshot: WebSessionSnapshot = {
   status: 'Your turn on flop.',
 }
 
+const heroMatchWinSnapshot: WebSessionSnapshot = {
+  ...baseSnapshot,
+  currentActor: null,
+  matchOver: true,
+  legalActions: [],
+  button: {
+    ...baseSnapshot.button,
+    stack: 20_000,
+  },
+  bigBlind: {
+    ...baseSnapshot.bigBlind,
+    stack: 0,
+    holeCards: ['Qc', 'Qd'],
+  },
+  history: [
+    ...baseSnapshot.history,
+    'preflop: button moves all-in to 100.0 bb',
+    'preflop: big-blind calls',
+    'button wins at showdown for 200.0 bb',
+  ],
+  status: 'Match over.',
+  terminalSummary: 'button wins at showdown for 200.0 bb',
+}
+
+const botMatchWinSnapshot: WebSessionSnapshot = {
+  ...afterHumanSnapshot,
+  currentActor: null,
+  matchOver: true,
+  legalActions: [],
+  button: {
+    ...afterHumanSnapshot.button,
+    stack: 0,
+  },
+  bigBlind: {
+    ...afterHumanSnapshot.bigBlind,
+    stack: 20_000,
+    holeCards: ['Qc', 'Qd'],
+  },
+  history: [
+    ...afterHumanSnapshot.history,
+    'flop: big-blind moves all-in to 100.0 bb',
+    'big-blind wins uncontested for 200.0 bb',
+  ],
+  status: 'Match over.',
+  terminalSummary: 'big-blind wins uncontested for 200.0 bb',
+}
+
 const initMock = vi.fn().mockResolvedValue(baseSnapshot)
 const resetHandMock = vi.fn().mockResolvedValue(baseSnapshot)
 const applyHumanActionMock = vi.fn().mockResolvedValue(afterHumanSnapshot)
 const advanceBotMock = vi.fn().mockResolvedValue(postActionSnapshot)
 const disposeMock = vi.fn()
+const playCueMock = vi.fn()
+const disposeAudioMock = vi.fn()
 
 vi.mock('./lib/pokerClient', () => ({
   PokerClient: class {
@@ -101,6 +150,33 @@ vi.mock('./lib/pokerClient', () => ({
     applyHumanAction = applyHumanActionMock
     advanceBot = advanceBotMock
     dispose = disposeMock
+  },
+}))
+
+vi.mock('./lib/tableAudio', () => ({
+  createTableAudio: vi.fn(() => ({
+    playCue: playCueMock,
+    dispose: disposeAudioMock,
+  })),
+  cueForActionLabel: (label: string | null) => {
+    const normalized = label?.trim().toLowerCase() ?? ''
+    if (normalized.startsWith('fold')) {
+      return 'fold'
+    }
+    if (normalized.startsWith('check')) {
+      return 'check'
+    }
+    if (normalized.includes('all-in') || normalized.startsWith('moves all-in')) {
+      return 'allIn'
+    }
+    if (
+      normalized.startsWith('call') ||
+      normalized.startsWith('bet') ||
+      normalized.startsWith('raise')
+    ) {
+      return 'wager'
+    }
+    return null
   },
 }))
 
@@ -118,6 +194,8 @@ describe('App', () => {
     advanceBotMock.mockReset()
     advanceBotMock.mockResolvedValue(postActionSnapshot)
     disposeMock.mockClear()
+    playCueMock.mockReset()
+    disposeAudioMock.mockReset()
     ;(globalThis as typeof globalThis & { __GTO_TEST_SEED__?: number }).__GTO_TEST_SEED__ = 7
   })
 
@@ -136,6 +214,11 @@ describe('App', () => {
     expect(await screen.findByLabelText('Poker table')).toBeInTheDocument()
     expect(screen.getByLabelText('Hero panel')).toHaveTextContent('You')
     expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Bot')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(screen.getByLabelText('Credits')).toHaveTextContent('Vector-Playing-Cards')
+    expect(screen.getByLabelText('Credits')).toHaveTextContent('murbar/jacks-or-better')
+    expect(screen.queryByText('Current page')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Action tray')).not.toHaveTextContent('hybrid play mode')
     expect(screen.queryByText('Session activity')).not.toBeInTheDocument()
     expect(screen.queryByText('Seed')).not.toBeInTheDocument()
@@ -198,6 +281,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Deal next hand' }))
 
     expect(resetHandMock).toHaveBeenCalledTimes(1)
+    expect(playCueMock).toHaveBeenCalledWith('cardDeal')
   })
 
   it(
@@ -277,10 +361,83 @@ describe('App', () => {
       await new Promise((resolve) => window.setTimeout(resolve, BOT_ACTION_BUBBLE_MS + 100))
     })
 
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual([
+      'wager',
+      'cardDeal',
+      'cardDeal',
+      'cardDeal',
+      'wager',
+    ])
     expect(screen.queryByText('Bets to 4.0 BB')).not.toBeInTheDocument()
     expect(screen.getByText('Pick your action')).toBeInTheDocument()
     expect(screen.getByText('Bot bets to 4.0 bb.')).toBeInTheDocument()
   }, 10_000)
+
+  it('tracks completed hero match wins across in-app new matches', async () => {
+    applyHumanActionMock.mockResolvedValueOnce(heroMatchWinSnapshot)
+    initMock.mockResolvedValueOnce(baseSnapshot)
+
+    render(<App />)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Call' }))
+
+    expect(await screen.findByRole('button', { name: 'Start new match' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['wager', 'matchWin'])
+
+    await user.click(screen.getByRole('button', { name: 'Start new match' }))
+
+    expect(await screen.findByRole('button', { name: 'Call' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual(['wager', 'matchWin', 'cardDeal'])
+  })
+
+  it('tracks completed bot match wins as player losses', async () => {
+    advanceBotMock.mockResolvedValueOnce(botMatchWinSnapshot)
+
+    render(<App />)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Call' }))
+
+    expect(
+      await screen.findByRole('button', { name: 'Start new match' }, { timeout: 5_000 }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('1')
+    expect(playCueMock.mock.calls.map(([cue]) => cue)).toEqual([
+      'wager',
+      'cardDeal',
+      'cardDeal',
+      'cardDeal',
+      'allIn',
+      'matchLoss',
+    ])
+  })
+
+  it('does not count ordinary terminal hands while the match is still running', async () => {
+    applyHumanActionMock.mockResolvedValueOnce(terminalSnapshot)
+
+    render(<App />)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Call' }))
+
+    expect(await screen.findByRole('button', { name: 'Deal next hand' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Wins')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('Losses')
+    expect(screen.getByLabelText('Match record')).toHaveTextContent('0')
+  })
 
   it('shows neutral guidance when the hero is first to act on a street', async () => {
     initMock.mockResolvedValueOnce({

@@ -109,6 +109,109 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
   await expect(page.getByText(/Bot .*bb\./i)).toBeVisible()
 })
 
+test('plays the mapped table sounds for player action, board reveals, bot action, and new-hand reset', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_TEST_SCENARIO__ = 'flopRevealThenAction'
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 900
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_AUDIO_PLAYED__ = []
+
+    HTMLMediaElement.prototype.play = function playStub() {
+      const src = this.currentSrc || this.src
+      ;(
+        window as typeof window & {
+          __GTO_AUDIO_PLAYED__?: string[]
+        }
+      ).__GTO_AUDIO_PLAYED__?.push(src)
+      return Promise.resolve()
+    }
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Action tray').getByRole('button', { name: 'Call', exact: true }).click()
+  await expect(page.getByText('Pick your action')).toBeVisible()
+  await page.getByLabel('Action tray').getByRole('button', { name: 'Call', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Deal next hand' })).toBeVisible()
+  await page.getByRole('button', { name: 'Deal next hand' }).click()
+  await expect(page.getByText('Hand 2')).toBeVisible()
+
+  const played = await page.evaluate(() => {
+    return (
+      (
+        window as typeof window & {
+          __GTO_AUDIO_PLAYED__?: string[]
+        }
+      ).__GTO_AUDIO_PLAYED__ ?? []
+    )
+  })
+
+  expect(played.filter((value) => value.includes('card-turn-alt.mp3'))).toHaveLength(6)
+  expect(played.filter((value) => value.includes('bet.mp3'))).toHaveLength(3)
+  expect(played.filter((value) => value.includes('button-press.mp3'))).toHaveLength(0)
+  expect(played.filter((value) => value.includes('card-tap.mp3'))).toHaveLength(0)
+})
+
+test('increments the page-local match record after a completed player win', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as typeof window & { __GTO_TEST_SCENARIO__?: string }).__GTO_TEST_SCENARIO__ =
+      'matchOverHeroWin'
+  })
+  await page.goto('/')
+
+  const record = page.getByLabel('Match record')
+  await expect(record).toContainText('Wins')
+  await expect(record).toContainText('0')
+  await expect(record).toContainText('Losses')
+  await expect(record).toContainText('0')
+
+  await page.getByRole('button', { name: 'Call' }).click()
+
+  await expect(page.getByRole('button', { name: 'Start new match' })).toBeVisible()
+  await expect(record).toContainText('Wins')
+  await expect(record).toContainText('1')
+  await expect(record).toContainText('Losses')
+  await expect(record).toContainText('0')
+
+  await page.getByRole('button', { name: 'Start new match' }).click()
+  await expect(page.getByRole('button', { name: 'Call' })).toBeVisible()
+  await expect(record).toContainText('Wins')
+  await expect(record).toContainText('1')
+})
+
+test('increments the page-local match record after a completed bot win', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as typeof window & { __GTO_TEST_SCENARIO__?: string }).__GTO_TEST_SCENARIO__ =
+      'matchOverBotWin'
+  })
+  await page.goto('/')
+
+  const record = page.getByLabel('Match record')
+  await page.getByRole('button', { name: 'Call' }).click()
+
+  await expect(page.getByRole('button', { name: 'Start new match' })).toBeVisible()
+  await expect(record).toContainText('Wins')
+  await expect(record).toContainText('0')
+  await expect(record).toContainText('Losses')
+  await expect(record).toContainText('1')
+})
+
 async function clickPreferredAction(page: Page): Promise<boolean> {
   const actionTray = page.getByLabel('Action tray')
 

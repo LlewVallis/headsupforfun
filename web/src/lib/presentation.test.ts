@@ -7,6 +7,7 @@ import {
   BOARD_REVEAL_STEP_MS,
   actionPrompt,
   buildPlayerSessionConfig,
+  completedMatchWinner,
   currentStreetBotActionLabel,
   defaultTestSeed,
   extractBotActionLabel,
@@ -165,5 +166,59 @@ describe('presentation helpers', () => {
     expect(BOT_ACTION_BUBBLE_MS).toBeGreaterThan(0)
     expect(BOT_MIN_THINK_MS).toBeGreaterThan(0)
     expect(BOARD_REVEAL_STEP_MS).toBeGreaterThan(0)
+  })
+
+  it('identifies completed match winners from the persistent stacks', () => {
+    expect(
+      completedMatchWinner({
+        ...snapshot,
+        matchOver: true,
+        button: {
+          ...snapshot.button,
+          stack: 20_000,
+        },
+        bigBlind: {
+          ...snapshot.bigBlind,
+          stack: 0,
+        },
+      }),
+    ).toBe('hero')
+
+    expect(
+      completedMatchWinner({
+        ...snapshot,
+        matchOver: true,
+        button: {
+          ...snapshot.button,
+          stack: 0,
+        },
+        bigBlind: {
+          ...snapshot.bigBlind,
+          stack: 20_000,
+        },
+      }),
+    ).toBe('bot')
+
+    expect(
+      completedMatchWinner({
+        ...snapshot,
+        matchOver: false,
+      }),
+    ).toBeNull()
+
+    expect(
+      completedMatchWinner({
+        ...snapshot,
+        matchOver: true,
+        button: {
+          ...snapshot.button,
+          stack: 10_000,
+        },
+        bigBlind: {
+          ...snapshot.bigBlind,
+          stack: 10_000,
+        },
+      }),
+    ).toBeNull()
   })
 })

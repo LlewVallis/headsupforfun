@@ -257,6 +257,50 @@ describe('PokerClient', () => {
 
     client.dispose()
   })
+
+  it('supports deterministic match-end scenarios for win/loss counter coverage', async () => {
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+      }
+    ).__GTO_TEST_SCENARIO__ = 'matchOverHeroWin'
+
+    const heroWinClient = new PokerClient()
+    expect(FakeWorker.instances).toHaveLength(0)
+    const heroOpening = await heroWinClient.init({
+      seed: 7,
+      humanSeat: 'button',
+      botMode: 'hybridPlay',
+    })
+    expect(heroOpening.matchOver).toBe(false)
+
+    const heroTerminal = await heroWinClient.applyHumanAction('call')
+    expect(heroTerminal.matchOver).toBe(true)
+    expect(heroTerminal.bigBlind.stack).toBe(0)
+    heroWinClient.dispose()
+
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+      }
+    ).__GTO_TEST_SCENARIO__ = 'matchOverBotWin'
+
+    const botWinClient = new PokerClient()
+    const botOpening = await botWinClient.init({
+      seed: 7,
+      humanSeat: 'button',
+      botMode: 'hybridPlay',
+    })
+    expect(botOpening.matchOver).toBe(false)
+
+    const botAfterHuman = await botWinClient.applyHumanAction('call')
+    expect(botAfterHuman.currentActor).toBe('bigBlind')
+
+    const botTerminal = await botWinClient.advanceBot()
+    expect(botTerminal.matchOver).toBe(true)
+    expect(botTerminal.button.stack).toBe(0)
+    botWinClient.dispose()
+  })
 })
 
 function expectWorker(): FakeWorker {

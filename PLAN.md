@@ -642,7 +642,7 @@ Constraints for this phase:
 - Production web builds use optimized release-mode WASM artifacts
 - Production web play uses the stronger fixed `hybrid-play` bot path in the worker
 - Normal player-facing web sessions use internal random seeds; explicit seeding is reserved for tests and debug workflows
-- Persistent cross-hand stack carry is deferred; normal web play still starts each hand at the standard fresh `100bb` state
+- Normal web play uses the shipped persistent-stack match model rather than resetting both players to fresh `100bb` every hand
 
 ### Web Architecture Strategy
 
@@ -866,7 +866,7 @@ Non-goals for the web phase:
 - Introducing arbitrary chip-size input
 - Replacing the reusable Rust solver core with frontend logic
 - A separate web-only performance milestone; responsiveness should instead be validated inside the playable web milestones above
-- Persistent cross-hand stack carry or uneven-stack match rules until the core session and solver model are extended to support them cleanly
+- Persisting match-result history across page reloads, devices, or accounts; page-level match statistics may remain in-memory only unless a later milestone says otherwise
 
 ## Post-M20 Follow-On Plan
 
@@ -1001,6 +1001,58 @@ Risk notes:
 - Runtime preflop solving remains out of scope unless a later milestone explicitly revisits that decision
 - If a full stack-aware preflop blueprint is too expensive immediately, the depth-bucketing approximation and fallback policy must be explicit and tested rather than implicit
 
+## Post-M24 Follow-On Plan
+
+The milestones above are already reflected in the current shipped product state. The next planned work is:
+
+1. Add restrained web audio next, because it improves feel without changing solver or match architecture.
+2. Add a page-local match win/loss counter after that, because it improves repeated-play feedback while staying intentionally non-persistent across page reloads.
+
+### M25. Web Table Audio And Action Sound Effects
+
+Goal:
+
+- Add restrained table audio that makes the browser game feel more responsive without turning it into a noisy casino effect.
+
+Deliverables:
+
+- Add browser-safe SFX playback for important game events, at minimum:
+  - dealing the flop
+  - the bot making or revealing an action
+- Optionally add a few additional cues only if they stay restrained and clearly improve state readability.
+- Source the initial audio set from the MIT-licensed `jacks-or-better` audio assets at `https://github.com/murbar/jacks-or-better/tree/master/src/audio`, or from clearly documented derivatives of those files.
+- Record the adopted audio-file source, license, and any edits in a checked-in asset/source note so attribution is not implicit.
+- Keep audio behavior in the web layer so Rust engine and solver crates remain free of presentation concerns.
+- Ensure the page degrades gracefully when audio is unavailable, blocked by autoplay rules, or explicitly muted.
+
+Validation:
+
+- Component and browser tests cover the required event-to-sound mappings for flop dealing and bot action reveal.
+- Regression tests prove sounds do not double-fire on rerender, replay, or worker/client state resync.
+- Manual browser smoke run confirms the cues are audible, restrained, and correctly timed.
+- Manual review confirms the repo contains the promised source and license reference for the adopted audio assets.
+
+### M26. Page-Local Match Win/Loss Counter
+
+Goal:
+
+- Give repeated web play a lightweight match record that reflects completed matches without changing the already shipped persistent-stack match model.
+
+Deliverables:
+
+- Add a visible page-local counter that tracks how many full matches the human player has won versus lost during the current page load.
+- Increment the counter only when the existing match-end rules declare a winner, rather than after every hand.
+- Keep the counter in browser memory only; a full page reload clears it and no local-storage persistence is required.
+- Preserve the displayed totals across successive in-app match restarts during the same page session.
+- Display the counter somewhere in the page chrome where it is easy to find but does not compete with the table itself.
+
+Validation:
+
+- Component and browser tests cover counter updates after a completed player match win and player match loss.
+- Regression tests prove ordinary hand results inside an ongoing match do not change the match totals.
+- Regression tests prove the totals persist across in-app new-match flows but reset on a fresh page load.
+- Manual smoke run confirms the displayed totals remain correct across multiple completed matches in one browser session.
+
 ## Risk Register
 
 ### Risk: Tree Size Explosion
@@ -1068,6 +1120,7 @@ The repository is successful when all of the following are true:
 - `TexasSolver`: https://github.com/bupticybee/TexasSolver
 - `slumbot2019`: https://github.com/ericgjackson/slumbot2019
 - `robopoker`: https://github.com/krukah/robopoker
+- `jacks-or-better` audio assets: https://github.com/murbar/jacks-or-better/tree/master/src/audio
 - OpenSpiel algorithms docs: https://openspiel.readthedocs.io/en/latest/algorithms.html
 - OpenSpiel contributing/design docs: https://openspiel.readthedocs.io/en/latest/contributing.html
 - OpenSpiel Windows docs: https://openspiel.readthedocs.io/en/stable/windows.html

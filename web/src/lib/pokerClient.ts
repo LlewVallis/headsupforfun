@@ -21,6 +21,8 @@ interface PokerClientBackend {
   dispose(): void
 }
 
+type TestScenario = 'flopRevealThenAction' | 'matchOverHeroWin' | 'matchOverBotWin'
+
 export class PokerClient {
   private readonly backend: PokerClientBackend
 
@@ -144,6 +146,12 @@ class WorkerPokerClientBackend implements PokerClientBackend {
 }
 
 class ScenarioPokerClientBackend implements PokerClientBackend {
+  private readonly scenario: TestScenario
+
+  constructor(scenario: TestScenario) {
+    this.scenario = scenario
+  }
+
   private config: WebSessionConfig | null = null
   private handNumber = 1
   private stage: 'opening' | 'afterHuman' | 'afterBot' | 'terminal' = 'opening'
@@ -161,6 +169,16 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
 
   async applyHumanAction(_actionId: string): Promise<WebSessionSnapshot> {
     this.assertInitialized()
+
+    if (this.scenario === 'matchOverHeroWin' && this.stage === 'opening') {
+      this.stage = 'terminal'
+      return this.currentSnapshot()
+    }
+
+    if (this.scenario === 'matchOverBotWin' && this.stage === 'opening') {
+      this.stage = 'afterHuman'
+      return this.currentSnapshot()
+    }
 
     if (this.stage === 'opening') {
       this.stage = 'afterHuman'
@@ -186,7 +204,7 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
       await sleep(forcedDelayMs)
     }
 
-    this.stage = 'afterBot'
+    this.stage = this.scenario === 'matchOverBotWin' ? 'terminal' : 'afterBot'
     return this.currentSnapshot()
   }
 
@@ -201,15 +219,38 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
 
   private currentSnapshot(): WebSessionSnapshot {
     const config = this.assertInitialized()
-    switch (this.stage) {
-      case 'opening':
-        return buildScenarioOpeningSnapshot(config, this.handNumber)
-      case 'afterHuman':
-        return buildScenarioAfterHumanSnapshot(config, this.handNumber)
-      case 'afterBot':
-        return buildScenarioAfterBotSnapshot(config, this.handNumber)
-      case 'terminal':
-        return buildScenarioTerminalSnapshot(config, this.handNumber)
+    switch (this.scenario) {
+      case 'flopRevealThenAction':
+        switch (this.stage) {
+          case 'opening':
+            return buildScenarioOpeningSnapshot(config, this.handNumber)
+          case 'afterHuman':
+            return buildScenarioAfterHumanSnapshot(config, this.handNumber)
+          case 'afterBot':
+            return buildScenarioAfterBotSnapshot(config, this.handNumber)
+          case 'terminal':
+            return buildScenarioTerminalSnapshot(config, this.handNumber)
+        }
+      case 'matchOverHeroWin':
+        switch (this.stage) {
+          case 'opening':
+            return buildHeroMatchScenarioOpeningSnapshot(config, this.handNumber)
+          case 'terminal':
+            return buildHeroMatchScenarioTerminalSnapshot(config, this.handNumber)
+          default:
+            throw new Error(`Test scenario does not support stage ${this.stage}`)
+        }
+      case 'matchOverBotWin':
+        switch (this.stage) {
+          case 'opening':
+            return buildBotMatchScenarioOpeningSnapshot(config, this.handNumber)
+          case 'afterHuman':
+            return buildBotMatchScenarioAfterHumanSnapshot(config, this.handNumber)
+          case 'terminal':
+            return buildBotMatchScenarioTerminalSnapshot(config, this.handNumber)
+          default:
+            throw new Error(`Test scenario does not support stage ${this.stage}`)
+        }
     }
   }
 
@@ -222,9 +263,8 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
 }
 
 function createBackend(): PokerClientBackend {
-  return readForcedTestScenario() === 'flopRevealThenAction'
-    ? new ScenarioPokerClientBackend()
-    : new WorkerPokerClientBackend()
+  const scenario = readForcedTestScenario()
+  return scenario ? new ScenarioPokerClientBackend(scenario) : new WorkerPokerClientBackend()
 }
 
 function readForcedWorkerInitError(): string | null {
@@ -260,13 +300,18 @@ function readForcedWorkerActionDelay(): number | null {
   return null
 }
 
-function readForcedTestScenario(): string | null {
+function readForcedTestScenario(): TestScenario | null {
   const host = globalThis as typeof globalThis & {
     __GTO_TEST_SCENARIO__?: string
   }
-  return host.__GTO_TEST_SCENARIO__ === 'flopRevealThenAction'
-    ? host.__GTO_TEST_SCENARIO__
-    : null
+  switch (host.__GTO_TEST_SCENARIO__) {
+    case 'flopRevealThenAction':
+    case 'matchOverHeroWin':
+    case 'matchOverBotWin':
+      return host.__GTO_TEST_SCENARIO__
+    default:
+      return null
+  }
 }
 
 function buildScenarioOpeningSnapshot(
@@ -287,6 +332,7 @@ function buildScenarioOpeningSnapshot(
     status: 'Your turn on preflop.',
     terminalSummary: null,
     botHoleCards: [],
+    matchOver: false,
   })
 }
 
@@ -314,6 +360,7 @@ function buildScenarioAfterHumanSnapshot(
     status: 'Bot to act on flop (big-blind).',
     terminalSummary: null,
     botHoleCards: [],
+    matchOver: false,
   })
 }
 
@@ -346,6 +393,7 @@ function buildScenarioAfterBotSnapshot(
     status: 'Your turn on flop.',
     terminalSummary: null,
     botHoleCards: [],
+    matchOver: false,
   })
 }
 
@@ -382,6 +430,137 @@ function buildScenarioTerminalSnapshot(
     status: 'Hand complete.',
     terminalSummary: 'button wins at showdown for 7.8 bb',
     botHoleCards: ['As', '7s'],
+    matchOver: false,
+  })
+}
+
+function buildHeroMatchScenarioOpeningSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return buildScenarioSnapshot(config, handNumber, {
+    street: 'preflop',
+    currentActor: 'button',
+    pot: 150,
+    boardCards: [],
+    buttonStack: 9_950,
+    bigBlindStack: 9_900,
+    buttonContribution: 50,
+    bigBlindContribution: 100,
+    legalActions: [{ id: 'call', label: 'Call' }],
+    history: ['button posts 0.5 bb', 'big-blind posts 1.0 bb'],
+    status: 'Your turn on preflop.',
+    terminalSummary: null,
+    botHoleCards: [],
+    matchOver: false,
+  })
+}
+
+function buildHeroMatchScenarioTerminalSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return buildScenarioSnapshot(config, handNumber, {
+    street: 'preflop',
+    currentActor: null,
+    pot: 20_000,
+    boardCards: [],
+    buttonStack: 20_000,
+    bigBlindStack: 0,
+    buttonContribution: 10_000,
+    bigBlindContribution: 10_000,
+    legalActions: [],
+    history: [
+      'button posts 0.5 bb',
+      'big-blind posts 1.0 bb',
+      'preflop: button moves all-in to 100.0 bb',
+      'preflop: big-blind calls',
+      'button wins at showdown for 200.0 bb',
+    ],
+    status: 'Match over.',
+    terminalSummary: 'button wins at showdown for 200.0 bb',
+    botHoleCards: ['Qc', 'Qd'],
+    matchOver: true,
+  })
+}
+
+function buildBotMatchScenarioOpeningSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return buildScenarioSnapshot(config, handNumber, {
+    street: 'preflop',
+    currentActor: 'button',
+    pot: 150,
+    boardCards: [],
+    buttonStack: 9_950,
+    bigBlindStack: 9_900,
+    buttonContribution: 50,
+    bigBlindContribution: 100,
+    legalActions: [{ id: 'call', label: 'Call' }],
+    history: ['button posts 0.5 bb', 'big-blind posts 1.0 bb'],
+    status: 'Your turn on preflop.',
+    terminalSummary: null,
+    botHoleCards: [],
+    matchOver: false,
+  })
+}
+
+function buildBotMatchScenarioAfterHumanSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return buildScenarioSnapshot(config, handNumber, {
+    street: 'flop',
+    currentActor: 'bigBlind',
+    pot: 20_000,
+    boardCards: ['Jh', '7c', '2d'],
+    buttonStack: 0,
+    bigBlindStack: 0,
+    buttonContribution: 10_000,
+    bigBlindContribution: 10_000,
+    legalActions: [],
+    history: [
+      'button posts 0.5 bb',
+      'big-blind posts 1.0 bb',
+      'preflop: button calls',
+      'preflop: big-blind checks',
+      'flop: Jh 7c 2d',
+    ],
+    status: 'Bot to act on flop (big-blind).',
+    terminalSummary: null,
+    botHoleCards: [],
+    matchOver: false,
+  })
+}
+
+function buildBotMatchScenarioTerminalSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return buildScenarioSnapshot(config, handNumber, {
+    street: 'flop',
+    currentActor: null,
+    pot: 20_000,
+    boardCards: ['Jh', '7c', '2d'],
+    buttonStack: 0,
+    bigBlindStack: 20_000,
+    buttonContribution: 10_000,
+    bigBlindContribution: 10_000,
+    legalActions: [],
+    history: [
+      'button posts 0.5 bb',
+      'big-blind posts 1.0 bb',
+      'preflop: button calls',
+      'preflop: big-blind checks',
+      'flop: Jh 7c 2d',
+      'flop: big-blind moves all-in to 100.0 bb',
+      'big-blind wins uncontested for 200.0 bb',
+    ],
+    status: 'Match over.',
+    terminalSummary: 'big-blind wins uncontested for 200.0 bb',
+    botHoleCards: ['Qc', 'Qd'],
+    matchOver: true,
   })
 }
 
@@ -402,6 +581,7 @@ function buildScenarioSnapshot(
     status: string
     terminalSummary: string | null
     botHoleCards: string[]
+    matchOver: boolean
   },
 ): WebSessionSnapshot {
   return {
@@ -409,7 +589,7 @@ function buildScenarioSnapshot(
     humanSeat: 'button',
     botSeat: 'bigBlind',
     botMode: config.botMode,
-    matchOver: false,
+    matchOver: state.matchOver,
     street: state.street,
     phase: state.terminalSummary ? 'terminal' : 'bettingRound',
     currentActor: state.currentActor,
