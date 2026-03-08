@@ -38,6 +38,7 @@ function App() {
   const clientRef = useRef<PokerClient | null>(null)
   const initRequestRef = useRef(0)
   const botBubbleTimerRef = useRef<number | null>(null)
+  const autoBotTurnKeyRef = useRef<string | null>(null)
   const previousSnapshotRef = useRef<WebSessionSnapshot | null>(null)
   const tableAudioRef = useRef<ReturnType<typeof createTableAudio> | null>(null)
   const [snapshot, setSnapshot] = useState<WebSessionSnapshot | null>(null)
@@ -73,6 +74,23 @@ function App() {
 
     previousSnapshotRef.current = snapshot
   }, [snapshot])
+
+  useEffect(() => {
+    if (!snapshot || loading || busy || error) {
+      return
+    }
+    if (snapshot.terminalSummary || snapshot.currentActor !== snapshot.botSeat) {
+      return
+    }
+
+    const snapshotKey = botTurnSnapshotKey(snapshot)
+    if (autoBotTurnKeyRef.current === snapshotKey) {
+      return
+    }
+    autoBotTurnKeyRef.current = snapshotKey
+
+    void runBotTurnSequence(snapshot)
+  }, [busy, error, loading, snapshot])
 
   const hero = useMemo(() => {
     if (!snapshot) {
@@ -124,6 +142,7 @@ function App() {
 
   const handleNewMatch = async () => {
     clearBotBubbleTimer()
+    autoBotTurnKeyRef.current = null
     setBotPresence({ state: 'idle' })
     await recreateClientAndInitialize(buildPlayerSessionConfig(), true)
   }
@@ -139,6 +158,7 @@ function App() {
     }
 
     clearBotBubbleTimer()
+    autoBotTurnKeyRef.current = null
     setBotPresence({ state: 'idle' })
     await runClientAction(async () => {
       const nextSnapshot = await client.resetHand()
@@ -175,39 +195,7 @@ function App() {
         return
       }
 
-      let previousSnapshot = afterHumanSnapshot
-      while (
-        !previousSnapshot.terminalSummary &&
-        previousSnapshot.currentActor === previousSnapshot.botSeat
-      ) {
-        setBotPresence({ state: 'thinking' })
-        await waitForNextPaint()
-        const afterBotSnapshot = await client.advanceBot()
-        await transitionSnapshot(previousSnapshot, afterBotSnapshot)
-        const botAction = extractBotActionLabel(previousSnapshot, afterBotSnapshot)
-        playActionCue(botAction)
-
-        if (afterBotSnapshot.terminalSummary) {
-          setBotPresence({ state: 'idle' })
-          return
-        }
-
-        if (afterBotSnapshot.currentActor === afterBotSnapshot.botSeat) {
-          setBotPresence({ state: 'idle' })
-          previousSnapshot = afterBotSnapshot
-          continue
-        }
-
-        if (botAction) {
-          showBotActionBubble(botAction)
-          return
-        }
-
-        setBotPresence({ state: 'idle' })
-        return
-      }
-
-      setBotPresence({ state: 'idle' })
+      await advanceBotUntilHumanTurn(afterHumanSnapshot, client)
     } catch (err) {
       setBotPresence({ state: 'idle' })
       setError(toErrorMessage(err))
@@ -336,6 +324,65 @@ function App() {
     }
   }
 
+  async function runBotTurnSequence(startSnapshot: WebSessionSnapshot): Promise<void> {
+    const client = clientRef.current
+    if (!client) {
+      return
+    }
+
+    clearBotBubbleTimer()
+    setBusy(true)
+    setError(null)
+
+    try {
+      await advanceBotUntilHumanTurn(startSnapshot, client)
+    } catch (err) {
+      setBotPresence({ state: 'idle' })
+      setError(toErrorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function advanceBotUntilHumanTurn(
+    startingSnapshot: WebSessionSnapshot,
+    client: PokerClient,
+  ): Promise<void> {
+    let previousSnapshot = startingSnapshot
+    while (
+      !previousSnapshot.terminalSummary &&
+      previousSnapshot.currentActor === previousSnapshot.botSeat
+    ) {
+      setBotPresence({ state: 'thinking' })
+      await waitForNextPaint()
+      const afterBotSnapshot = await client.advanceBot()
+      await transitionSnapshot(previousSnapshot, afterBotSnapshot)
+      const botAction = extractBotActionLabel(previousSnapshot, afterBotSnapshot)
+      playActionCue(botAction)
+
+      if (afterBotSnapshot.terminalSummary) {
+        setBotPresence({ state: 'idle' })
+        return
+      }
+
+      if (afterBotSnapshot.currentActor === afterBotSnapshot.botSeat) {
+        setBotPresence({ state: 'idle' })
+        previousSnapshot = afterBotSnapshot
+        continue
+      }
+
+      if (botAction) {
+        showBotActionBubble(botAction)
+        return
+      }
+
+      setBotPresence({ state: 'idle' })
+      return
+    }
+
+    setBotPresence({ state: 'idle' })
+  }
+
   function playActionCue(label: string | null): void {
     const cue = cueForActionLabel(label)
     if (!cue) {
@@ -346,7 +393,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_18%_10%,rgba(36,105,76,0.18),transparent_18%),radial-gradient(circle_at_82%_18%,rgba(25,74,54,0.14),transparent_20%),radial-gradient(circle_at_50%_120%,rgba(160,118,50,0.08),transparent_32%),linear-gradient(180deg,#020605_0%,#05100c_34%,#020705_68%,#010302_100%)] px-3 pb-10 pt-4 text-ivory-100 md:px-5 lg:px-6">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_18%_10%,rgba(43,122,88,0.22),transparent_20%),radial-gradient(circle_at_82%_18%,rgba(31,92,67,0.18),transparent_22%),radial-gradient(circle_at_50%_120%,rgba(160,118,50,0.08),transparent_32%),linear-gradient(180deg,#020605_0%,#06130e_34%,#020705_68%,#010302_100%)] px-3 pb-10 pt-4 text-ivory-100 md:px-5 lg:px-6">
       <div className="mx-auto flex w-full max-w-[1140px] flex-col gap-4">
         <header className="relative overflow-hidden rounded-[1.4rem] border border-[#e8d8b6]/8 bg-[#07100d]/88 px-4 py-3 shadow-[0_20px_80px_rgba(0,0,0,0.5)] md:px-5">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(231,199,115,0.05),transparent_24%,transparent_76%,rgba(231,199,115,0.04)),radial-gradient(circle_at_18%_0%,rgba(255,255,255,0.05),transparent_24%)]" />
@@ -755,6 +802,17 @@ function actionButtonTone(label: string): string {
     return 'border-[#eed7ad]/10 bg-[#0d1613] text-white hover:border-[#eed7ad]/20 hover:bg-[#12201b]'
   }
   return 'border-[#eed7ad]/14 bg-[linear-gradient(180deg,rgba(18,30,24,0.98),rgba(11,18,14,0.96))] text-white hover:border-gold-300/28 hover:bg-[linear-gradient(180deg,rgba(24,40,32,0.98),rgba(13,21,16,0.96))]'
+}
+
+function botTurnSnapshotKey(snapshot: WebSessionSnapshot): string {
+  return [
+    snapshot.handNumber,
+    snapshot.street,
+    snapshot.currentActor ?? 'terminal',
+    snapshot.history.length,
+    snapshot.button.stack,
+    snapshot.bigBlind.stack,
+  ].join(':')
 }
 
 function fillBoardCards(cards: string[]): Array<string | null> {

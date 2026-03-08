@@ -44,10 +44,10 @@
     margin: 0;
     min-height: 100vh;
     background:
-      radial-gradient(circle at 18% 10%, rgb(36 105 76 / 18%), transparent 18%),
-      radial-gradient(circle at 82% 18%, rgb(25 74 54 / 14%), transparent 20%),
+      radial-gradient(circle at 18% 10%, rgb(43 122 88 / 22%), transparent 20%),
+      radial-gradient(circle at 82% 18%, rgb(31 92 67 / 18%), transparent 22%),
       radial-gradient(circle at 50% 120%, rgb(155 118 51 / 7%), transparent 32%),
-      linear-gradient(180deg, #020605 0%, #05100c 34%, #020705 68%, #010302 100%);
+      linear-gradient(180deg, #020605 0%, #06130e 34%, #020705 68%, #010302 100%);
   }
 
   button,

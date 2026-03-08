@@ -110,6 +110,64 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
   await expect(page.getByText(/Bot .*bb\./i)).toBeVisible()
 })
 
+test('shows bot thinking and plays the wager sound when the bot opens preflop', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_TEST_SCENARIO__ = 'botActsFirstPreflop'
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 900
+    ;(
+      window as typeof window & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+        __GTO_AUDIO_PLAYED__?: string[]
+      }
+    ).__GTO_AUDIO_PLAYED__ = []
+
+    HTMLMediaElement.prototype.play = function playStub() {
+      const src = this.currentSrc || this.src
+      ;(
+        window as typeof window & {
+          __GTO_AUDIO_PLAYED__?: string[]
+        }
+      ).__GTO_AUDIO_PLAYED__?.push(src)
+      return Promise.resolve()
+    }
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.action-bubble')).toContainText('Thinking')
+  await expect(page.getByRole('button', { name: 'Call' })).toHaveCount(0)
+
+  await expect(page.locator('.action-bubble')).toContainText('Raises to 4.0 BB', {
+    timeout: 5_000,
+  })
+  await expect(page.getByRole('button', { name: 'Call' })).toBeVisible()
+  await expect(page.getByText('Bot raises to 4.0 bb.')).toBeVisible()
+
+  const played = await page.evaluate(() => {
+    return (
+      (
+        window as typeof window & {
+          __GTO_AUDIO_PLAYED__?: string[]
+        }
+      ).__GTO_AUDIO_PLAYED__ ?? []
+    )
+  })
+
+  expect(played.filter((value) => value.includes('bet.mp3'))).toHaveLength(1)
+})
+
 test('plays the mapped table sounds for board reveals, bot action, and new-hand reset', async ({ page }) => {
   await page.addInitScript(() => {
     ;(

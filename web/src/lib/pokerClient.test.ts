@@ -302,6 +302,39 @@ describe('PokerClient', () => {
     botWinClient.dispose()
   })
 
+  it('supports a deterministic scenario where the bot acts first preflop', async () => {
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_TEST_SCENARIO__ = 'botActsFirstPreflop'
+    ;(
+      globalThis as typeof globalThis & {
+        __GTO_TEST_SCENARIO__?: string
+        __GTO_FORCE_ACTION_DELAY_MS__?: number
+      }
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 1
+
+    const client = new PokerClient()
+    expect(FakeWorker.instances).toHaveLength(0)
+
+    const opening = await client.init({
+      seed: 7,
+      humanSeat: 'bigBlind',
+      botMode: 'hybridPlay',
+    })
+    expect(opening.currentActor).toBe('button')
+    expect(opening.legalActions).toEqual([])
+
+    const afterBot = await client.advanceBot()
+    expect(afterBot.currentActor).toBe('bigBlind')
+    expect(afterBot.legalActions.map((action) => action.label)).toContain('Call')
+    expect(afterBot.history).toContain('preflop: button raises to 4.0 bb')
+
+    client.dispose()
+  })
+
   it('supports a deterministic init-error scenario for page-reload recovery coverage', async () => {
     ;(
       globalThis as typeof globalThis & {

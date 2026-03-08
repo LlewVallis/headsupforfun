@@ -23,6 +23,7 @@ interface PokerClientBackend {
 
 type TestScenario =
   | 'flopRevealThenAction'
+  | 'botActsFirstPreflop'
   | 'matchOverHeroWin'
   | 'matchOverBotWin'
   | 'initError'
@@ -203,6 +204,16 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
 
   async advanceBot(): Promise<WebSessionSnapshot> {
     this.assertInitialized()
+    if (this.scenario === 'botActsFirstPreflop' && this.stage === 'opening') {
+      const forcedDelayMs = readForcedWorkerActionDelay()
+      if (forcedDelayMs) {
+        await sleep(forcedDelayMs)
+      }
+
+      this.stage = 'afterBot'
+      return this.currentSnapshot()
+    }
+
     if (this.stage !== 'afterHuman') {
       throw new Error(`Test scenario does not support bot action during ${this.stage}`)
     }
@@ -238,6 +249,15 @@ class ScenarioPokerClientBackend implements PokerClientBackend {
             return buildScenarioAfterBotSnapshot(config, this.handNumber)
           case 'terminal':
             return buildScenarioTerminalSnapshot(config, this.handNumber)
+        }
+      case 'botActsFirstPreflop':
+        switch (this.stage) {
+          case 'opening':
+            return buildBotFirstOpeningSnapshot(config, this.handNumber)
+          case 'afterBot':
+            return buildBotFirstAfterBotSnapshot(config, this.handNumber)
+          default:
+            throw new Error(`Test scenario does not support stage ${this.stage}`)
         }
       case 'matchOverHeroWin':
         switch (this.stage) {
@@ -316,6 +336,7 @@ function readForcedTestScenario(): TestScenario | null {
   }
   switch (host.__GTO_TEST_SCENARIO__) {
     case 'flopRevealThenAction':
+    case 'botActsFirstPreflop':
     case 'matchOverHeroWin':
     case 'matchOverBotWin':
     case 'initError':
@@ -406,6 +427,91 @@ function buildScenarioAfterBotSnapshot(
     botHoleCards: [],
     matchOver: false,
   })
+}
+
+function buildBotFirstOpeningSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return {
+    handNumber,
+    humanSeat: 'bigBlind',
+    botSeat: 'button',
+    botMode: config.botMode,
+    matchOver: false,
+    street: 'preflop',
+    phase: 'bettingRound',
+    currentActor: 'button',
+    pot: 150,
+    boardCards: [],
+    button: {
+      seat: 'button',
+      stack: 9_950,
+      totalContribution: 50,
+      streetContribution: 50,
+      folded: false,
+      holeCards: [],
+    },
+    bigBlind: {
+      seat: 'bigBlind',
+      stack: 9_900,
+      totalContribution: 100,
+      streetContribution: 100,
+      folded: false,
+      holeCards: ['Qh', '4d'],
+    },
+    legalActions: [],
+    history: ['button posts 0.5 bb', 'big-blind posts 1.0 bb'],
+    status: 'Bot to act on preflop (button).',
+    terminalSummary: null,
+  }
+}
+
+function buildBotFirstAfterBotSnapshot(
+  config: WebSessionConfig,
+  handNumber: number,
+): WebSessionSnapshot {
+  return {
+    handNumber,
+    humanSeat: 'bigBlind',
+    botSeat: 'button',
+    botMode: config.botMode,
+    matchOver: false,
+    street: 'preflop',
+    phase: 'bettingRound',
+    currentActor: 'bigBlind',
+    pot: 400,
+    boardCards: [],
+    button: {
+      seat: 'button',
+      stack: 9_600,
+      totalContribution: 400,
+      streetContribution: 400,
+      folded: false,
+      holeCards: [],
+    },
+    bigBlind: {
+      seat: 'bigBlind',
+      stack: 9_900,
+      totalContribution: 100,
+      streetContribution: 100,
+      folded: false,
+      holeCards: ['Qh', '4d'],
+    },
+    legalActions: [
+      { id: 'fold', label: 'Fold' },
+      { id: 'call', label: 'Call' },
+      { id: 'raiseTo:700', label: 'Raise to 7.0 bb' },
+      { id: 'allIn:10000', label: 'All-in to 100.0 bb' },
+    ],
+    history: [
+      'button posts 0.5 bb',
+      'big-blind posts 1.0 bb',
+      'preflop: button raises to 4.0 bb',
+    ],
+    status: 'Your turn on preflop.',
+    terminalSummary: null,
+  }
 }
 
 function buildScenarioTerminalSnapshot(
