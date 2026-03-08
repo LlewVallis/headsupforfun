@@ -37,6 +37,10 @@ const mockSnapshot: WebSessionSnapshot = {
   status: 'Your turn on preflop.',
   terminalSummary: null,
 }
+const hybridPlaySnapshot: WebSessionSnapshot = {
+  ...mockSnapshot,
+  botMode: 'hybridPlay',
+}
 
 const initMock = vi.fn().mockResolvedValue(mockSnapshot)
 const resetHandMock = vi.fn().mockResolvedValue(mockSnapshot)
@@ -52,14 +56,18 @@ vi.mock('./lib/pokerClient', () => ({
   },
 }))
 
-import App from './App'
+import App, { defaultBotMode } from './App'
 
 describe('App', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     initMock.mockResolvedValue(mockSnapshot)
     resetHandMock.mockResolvedValue(mockSnapshot)
     applyHumanActionMock.mockResolvedValue(mockSnapshot)
     disposeMock.mockClear()
+    initMock.mockClear()
+    resetHandMock.mockClear()
+    applyHumanActionMock.mockClear()
   })
 
   it('renders the Rust-backed poker UI shell', async () => {
@@ -87,5 +95,68 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Retry session' }))
 
     expect(await screen.findByText('Call')).toBeInTheDocument()
+  })
+
+  it('restarts sessions in the selected bot mode', async () => {
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await screen.findByText('Call')
+    initMock.mockClear()
+    initMock.mockResolvedValueOnce(hybridPlaySnapshot)
+
+    await user.click(screen.getByRole('button', { name: /Hybrid Play/i }))
+    await user.click(screen.getByRole('button', { name: 'Restart session' }))
+
+    expect(initMock).toHaveBeenCalledWith({
+      seed: 7,
+      humanSeat: 'button',
+      botMode: 'hybridPlay',
+    })
+    expect(await screen.findByLabelText('Hand status')).toHaveTextContent(
+      'Hybrid Play',
+    )
+  })
+
+  it('offers a fallback to Hybrid Fast after a slow Hybrid Play worker round trip', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText('Call')
+    initMock.mockResolvedValueOnce(hybridPlaySnapshot)
+    initMock.mockClear()
+    applyHumanActionMock.mockResolvedValueOnce(hybridPlaySnapshot)
+
+    await user.click(screen.getByRole('button', { name: /Hybrid Play/i }))
+    await user.click(screen.getByRole('button', { name: 'Restart session' }))
+    await screen.findAllByText('Hybrid Play')
+
+    let now = 0
+    const performanceSpy = vi.spyOn(performance, 'now').mockImplementation(() => {
+      now += 1_400
+      return now
+    })
+    const actionPromise = user.click(screen.getByRole('button', { name: 'Call' }))
+    await actionPromise
+
+    expect(await screen.findByLabelText('Performance fallback')).toHaveTextContent(
+      'Hybrid Play took',
+    )
+    performanceSpy.mockRestore()
+
+    initMock.mockResolvedValueOnce(mockSnapshot)
+    await user.click(screen.getByRole('button', { name: 'Switch to Hybrid Fast' }))
+
+    expect(initMock).toHaveBeenLastCalledWith({
+      seed: 7,
+      humanSeat: 'button',
+      botMode: 'hybridFast',
+    })
+  })
+
+  it('uses the stronger bot mode as the production default', () => {
+    expect(defaultBotMode(false)).toBe('hybridFast')
+    expect(defaultBotMode(true)).toBe('hybridPlay')
   })
 })

@@ -101,5 +101,6 @@ function readForcedWorkerInitError(): string | null {
   if (typeof value !== 'string' || value.length === 0) {
     return null
   }
+  delete host.__GTO_FORCE_WORKER_ERROR__
   return value
 }

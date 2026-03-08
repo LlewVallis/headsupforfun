@@ -8,7 +8,9 @@ import type {
 } from './lib/pokerTypes'
 
 const DEFAULT_SEED = '7'
-const DEFAULT_BOT_MODE: WebBotMode = 'hybridFast'
+const DEFAULT_BOT_MODE = defaultBotMode(import.meta.env.PROD)
+const FALLBACK_BOT_MODE: WebBotMode = 'hybridFast'
+const SLOW_MODE_WARNING_MS = 1_250
 const PANEL_CLASS =
   'border border-amber-100/15 bg-[linear-gradient(180deg,rgba(18,58,43,0.94),rgba(10,31,24,0.98))] shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-sm'
 const MODE_BUTTON_BASE_CLASS =
@@ -36,7 +38,7 @@ const BOT_MODE_OPTIONS: Array<{
   {
     value: 'hybridPlay',
     label: 'Hybrid Play',
-    detail: 'Stronger postflop runtime solving with a slower response budget.',
+    detail: 'Stronger postflop runtime solving with the heaviest browser cost.',
   },
 ]
 
@@ -50,20 +52,20 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastWorkerDurationMs, setLastWorkerDurationMs] = useState<number | null>(
+    null,
+  )
+  const [slowModeWarning, setSlowModeWarning] = useState<string | null>(null)
 
   useEffect(() => {
-    const client = new PokerClient()
-    clientRef.current = client
-
-    void initializeSession(client, {
+    void recreateClientAndInitialize({
       seed: parseSeed(DEFAULT_SEED),
       humanSeat: 'button',
       botMode: DEFAULT_BOT_MODE,
     })
 
     return () => {
-      clientRef.current = null
-      client.dispose()
+      disposeClient()
     }
   }, [])
 
@@ -81,7 +83,8 @@ function App() {
     return snapshot.botSeat === 'button' ? snapshot.button : snapshot.bigBlind
   }, [snapshot])
 
-  const sessionModeLabel = readableBotMode(selectedBotMode)
+  const effectiveBotMode = snapshot?.botMode ?? selectedBotMode
+  const sessionModeLabel = readableBotMode(effectiveBotMode)
   const activityLabel = loading
     ? 'Booting the worker-backed Rust session.'
     : busy
@@ -89,12 +92,7 @@ function App() {
       : 'Worker is idle. Seeded actions remain reproducible.'
 
   const handleStartSession = async () => {
-    const client = clientRef.current
-    if (!client) {
-      return
-    }
-
-    await initializeSession(client, {
+    await recreateClientAndInitialize({
       seed: parseSeed(seedInput),
       humanSeat: 'button',
       botMode: selectedBotMode,
@@ -107,7 +105,7 @@ function App() {
       return
     }
 
-    await runClientAction(async () => {
+    await runClientAction(effectiveBotMode, async () => {
       const nextSnapshot = await client.resetHand()
       setSnapshot(nextSnapshot)
     })
@@ -119,10 +117,37 @@ function App() {
       return
     }
 
-    await runClientAction(async () => {
+    await runClientAction(effectiveBotMode, async () => {
       const nextSnapshot = await client.applyHumanAction(actionId)
       setSnapshot(nextSnapshot)
     })
+  }
+
+  const handleFallbackMode = async () => {
+    setSelectedBotMode(FALLBACK_BOT_MODE)
+    setSlowModeWarning(null)
+    await recreateClientAndInitialize({
+      seed: parseSeed(seedInput),
+      humanSeat: 'button',
+      botMode: FALLBACK_BOT_MODE,
+    })
+  }
+
+  async function recreateClientAndInitialize(
+    config: WebSessionConfig,
+  ): Promise<void> {
+    const previousClient = clientRef.current
+    const client = new PokerClient()
+    clientRef.current = client
+    previousClient?.dispose()
+
+    await initializeSession(client, config)
+  }
+
+  function disposeClient(): void {
+    const client = clientRef.current
+    clientRef.current = null
+    client?.dispose()
   }
 
   async function initializeSession(
@@ -136,7 +161,7 @@ function App() {
     setError(null)
 
     try {
-      const nextSnapshot = await client.init(config)
+      const nextSnapshot = await timed(() => client.init(config), config.botMode)
       if (clientRef.current !== client || initRequestRef.current !== requestId) {
         return
       }
@@ -158,16 +183,39 @@ function App() {
     }
   }
 
-  async function runClientAction(action: () => Promise<void>): Promise<void> {
+  async function runClientAction(
+    botMode: WebBotMode,
+    action: () => Promise<void>,
+  ): Promise<void> {
     setBusy(true)
     setError(null)
 
     try {
-      await action()
+      await timed(action, botMode)
     } catch (err) {
       setError(toErrorMessage(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function timed<T>(
+    action: () => Promise<T>,
+    botMode: WebBotMode,
+  ): Promise<T> {
+    const startedAt = performance.now()
+    try {
+      return await action()
+    } finally {
+      const durationMs = performance.now() - startedAt
+      setLastWorkerDurationMs(durationMs)
+      if (botMode === 'hybridPlay' && durationMs >= SLOW_MODE_WARNING_MS) {
+        setSlowModeWarning(
+          `Hybrid Play took ${formatLatency(durationMs)} on the last worker round trip. Switch to Hybrid Fast if this browser feels sluggish.`,
+        )
+      } else {
+        setSlowModeWarning(null)
+      }
     }
   }
 
@@ -230,6 +278,7 @@ function App() {
         >
           {BOT_MODE_OPTIONS.map((option) => {
             const isActive = option.value === selectedBotMode
+            const isRecommended = option.value === DEFAULT_BOT_MODE
             return (
               <button
                 key={option.value}
@@ -246,6 +295,11 @@ function App() {
                 <span className="block text-[0.92rem] font-semibold uppercase tracking-[0.12em]">
                   {option.label}
                 </span>
+                {isRecommended ? (
+                  <span className="mt-2 inline-flex w-fit rounded-full border border-amber-100/18 bg-black/20 px-2.5 py-1 text-[0.68rem] uppercase tracking-[0.16em] text-amber-100">
+                    {import.meta.env.PROD ? 'Production default' : 'Recommended'}
+                  </span>
+                ) : null}
                 <small className="mt-2 block text-sm leading-6 text-stone-200/68">
                   {option.detail}
                 </small>
@@ -293,6 +347,11 @@ function App() {
           <span className="rounded-full border border-amber-100/18 bg-black/20 px-3 py-2">
             {sessionModeLabel}
           </span>
+          {lastWorkerDurationMs !== null ? (
+            <span className="rounded-full border border-amber-100/18 bg-black/20 px-3 py-2">
+              Last round trip {formatLatency(lastWorkerDurationMs)}
+            </span>
+          ) : null}
           <span
             className={joinClasses(
               'rounded-full border px-3 py-2',
@@ -305,6 +364,30 @@ function App() {
           </span>
         </div>
       </section>
+
+      {slowModeWarning ? (
+        <section
+          className={`${PANEL_CLASS} mt-4 flex flex-col gap-3 rounded-2xl border-amber-200/22 px-5 py-4 lg:flex-row lg:items-center lg:justify-between`}
+          aria-label="Performance fallback"
+        >
+          <div>
+            <strong className="text-sm uppercase tracking-[0.16em] text-amber-100">
+              Performance fallback available
+            </strong>
+            <p className="mt-2 text-sm leading-6 text-stone-200/82">
+              {slowModeWarning}
+            </p>
+          </div>
+          <button
+            type="button"
+            className={SECONDARY_BUTTON_CLASS}
+            onClick={handleFallbackMode}
+            disabled={busy}
+          >
+            Switch to Hybrid Fast
+          </button>
+        </section>
+      ) : null}
 
       {error ? (
         <section
@@ -539,8 +622,19 @@ function readableBotMode(botMode: WebBotMode): string {
   }
 }
 
+function defaultBotMode(isProduction: boolean): WebBotMode {
+  return isProduction ? 'hybridPlay' : 'hybridFast'
+}
+
 function formatBigBlinds(chips: number): string {
   return `${(chips / 100).toFixed(1)} bb`
+}
+
+function formatLatency(durationMs: number): string {
+  if (durationMs >= 1_000) {
+    return `${(durationMs / 1_000).toFixed(2)} s`
+  }
+  return `${Math.round(durationMs)} ms`
 }
 
 function joinClasses(...classes: Array<string | false | null | undefined>): string {
@@ -548,3 +642,4 @@ function joinClasses(...classes: Array<string | false | null | undefined>): stri
 }
 
 export default App
+export { defaultBotMode }

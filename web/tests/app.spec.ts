@@ -31,17 +31,35 @@ test('plays a complete seeded browser hand and deals the next one', async ({
 })
 
 test('shows a recoverable error when initialization fails', async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.goto('/')
+
+  await page.evaluate(() => {
     ;(window as typeof window & { __GTO_FORCE_WORKER_ERROR__?: string }).__GTO_FORCE_WORKER_ERROR__ =
       'forced initialization failure for e2e'
   })
 
-  await page.goto('/')
+  await page.getByRole('button', { name: 'Restart session' }).click()
 
   await expect(page.getByRole('alert')).toContainText(
     'forced initialization failure for e2e',
   )
-  await expect(page.getByRole('button', { name: 'Retry session' })).toBeVisible()
+  await page.getByRole('button', { name: 'Retry session' }).click()
+
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByLabel('Poker table')).toBeVisible()
+  await expect(page.getByLabel('Available actions')).toContainText(/Call|Check/)
+})
+
+test('switches into Hybrid Play mode for production-style browser sessions', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: /Hybrid Play/i }).click()
+  await page.getByRole('button', { name: 'Restart session' }).click()
+
+  await expect(page.getByLabel('Session activity')).toContainText('Hybrid Play')
+  await expect(page.getByLabel('Hand status')).toContainText('Hybrid Play')
 })
 
 async function clickPreferredAction(page: Page): Promise<boolean> {
