@@ -27,7 +27,7 @@ test('capture stable desktop screenshots for visual review', async ({ page }) =>
         __GTO_TEST_SCENARIO__?: string
         __GTO_FORCE_ACTION_DELAY_MS__?: number
       }
-    ).__GTO_FORCE_ACTION_DELAY_MS__ = 280
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 900
   })
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()

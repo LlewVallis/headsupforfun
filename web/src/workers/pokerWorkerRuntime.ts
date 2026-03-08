@@ -4,6 +4,7 @@ import type {
   WebSessionConfig,
   WebSessionSnapshot,
 } from '../lib/pokerTypes'
+import { BOT_MIN_THINK_MS } from '../lib/timing'
 
 export interface PokerSessionLike {
   snapshot(): unknown
@@ -50,10 +51,15 @@ export class PokerWorkerRuntime {
             this.requireSession().applyHumanAction(message.actionId),
           )
           break
-        case 'advanceBot':
-          await maybeDelay(message.forceActionDelayMs)
+        case 'advanceBot': {
+          const thinkStartedAt = nowMs()
           snapshot = asSnapshot(this.requireSession().advanceBot())
+          await waitForMinimumThink(
+            thinkStartedAt,
+            message.forceActionDelayMs,
+          )
           break
+        }
         case 'resetHand':
           snapshot = asSnapshot(this.requireSession().resetHand())
           break
@@ -89,4 +95,21 @@ async function maybeDelay(delayMs: number | null | undefined): Promise<void> {
   }
 
   await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs))
+}
+
+async function waitForMinimumThink(
+  startedAtMs: number,
+  forcedDelayMs: number | null | undefined,
+): Promise<void> {
+  const minimumDelayMs = Math.max(BOT_MIN_THINK_MS, forcedDelayMs ?? 0)
+  const remainingMs = minimumDelayMs - (nowMs() - startedAtMs)
+  await maybeDelay(remainingMs)
+}
+
+function nowMs(): number {
+  if (typeof globalThis.performance?.now === 'function') {
+    return globalThis.performance.now()
+  }
+
+  return Date.now()
 }

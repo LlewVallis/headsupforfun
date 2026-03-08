@@ -88,7 +88,7 @@ test('shows the flop while the bot thinks and then fades the action bubble', asy
         __GTO_TEST_SCENARIO__?: string
         __GTO_FORCE_ACTION_DELAY_MS__?: number
       }
-    ).__GTO_FORCE_ACTION_DELAY_MS__ = 220
+    ).__GTO_FORCE_ACTION_DELAY_MS__ = 900
   })
   await page.goto('/')
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()

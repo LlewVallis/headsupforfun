@@ -18,7 +18,7 @@
     "pretest:e2e": "npm run wasm:build",
     "test:e2e": "playwright test",
     "prescreenshots": "npm run wasm:build",
-    "screenshots": "playwright test --config=playwright.screenshots.config.ts",
+    "screenshots": "playwright test -c playwright.screenshots.config.ts",
     "validate": "npm run test && npm run test:e2e && npm run build"
   },
   "dependencies": {

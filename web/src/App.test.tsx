@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { BOARD_REVEAL_STEP_MS, BOT_ACTION_BUBBLE_MS, BOT_MIN_THINK_MS } from './lib/presentation'
+import { BOARD_REVEAL_STEP_MS, BOT_ACTION_BUBBLE_MS } from './lib/presentation'
 import type { WebSessionSnapshot } from './lib/pokerTypes'
 
 const baseSnapshot: WebSessionSnapshot = {
@@ -201,7 +201,7 @@ describe('App', () => {
   })
 
   it(
-    'reveals the flop one card at a time before the bot starts thinking and keeps thinking visible for at least 0.5s',
+    'reveals the flop one card at a time before the bot starts thinking and only shows the action after the bot responds',
     async () => {
       const user = userEvent.setup()
 
@@ -250,21 +250,17 @@ describe('App', () => {
       })
       await waitFor(() => expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking'))
       await waitFor(() => expect(advanceBotMock).toHaveBeenCalledTimes(1))
-      const thinkingStartedAt = Date.now()
 
       await act(async () => {
         resolveBotAction?.(postActionSnapshot)
         await Promise.resolve()
       })
 
-      expect(screen.getByLabelText('Bot panel')).toHaveTextContent('Thinking')
-
       expect(await screen.findByText('Bets to 4.0 BB')).toBeInTheDocument()
-      expect(Date.now() - thinkingStartedAt).toBeGreaterThanOrEqual(BOT_MIN_THINK_MS)
       expect(screen.getByText('Pick your action')).toBeInTheDocument()
       expect(screen.getByText('Bot bets to 4.0 bb.')).toBeInTheDocument()
     },
-    12_000,
+    10_000,
   )
 
   it('fades the bot action bubble after a short delay', async () => {

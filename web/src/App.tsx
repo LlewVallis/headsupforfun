@@ -5,8 +5,9 @@ import { PokerChipMark } from './components/PokerChipMark'
 import { PokerClient } from './lib/pokerClient'
 import {
   BOT_ACTION_BUBBLE_MS,
-  BOT_MIN_THINK_MS,
   BOARD_REVEAL_STEP_MS,
+} from './lib/timing'
+import {
   actionPrompt,
   botLabel,
   buildPlayerSessionConfig,
@@ -28,8 +29,6 @@ type BotPresence =
 type SeatBubble =
   | { tone: 'thinking'; label: string }
   | { tone: 'action'; label: string }
-
-const BOT_VISIBLE_THINK_BUFFER_MS = 80
 
 function App() {
   const clientRef = useRef<PokerClient | null>(null)
@@ -157,10 +156,8 @@ function App() {
       ) {
         setBotPresence({ state: 'thinking' })
         await waitForNextPaint()
-        const minimumThink = sleep(BOT_MIN_THINK_MS + BOT_VISIBLE_THINK_BUFFER_MS)
         const afterBotSnapshot = await client.advanceBot()
         await transitionSnapshot(previousSnapshot, afterBotSnapshot)
-        await minimumThink
 
         if (afterBotSnapshot.terminalSummary) {
           setBotPresence({ state: 'idle' })

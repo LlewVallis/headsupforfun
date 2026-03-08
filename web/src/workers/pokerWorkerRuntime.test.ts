@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { WebSessionConfig, WebSessionSnapshot } from '../lib/pokerTypes'
+import { BOT_MIN_THINK_MS } from '../lib/timing'
 import { PokerWorkerRuntime } from './pokerWorkerRuntime'
 
 const mockConfig: WebSessionConfig = {
@@ -103,7 +104,38 @@ describe('PokerWorkerRuntime', () => {
     expect(response).toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
   })
 
-  it('waits for a forced bot-action delay when requested by the test harness', async () => {
+  it('waits for the minimum visible bot think time before returning a bot action', async () => {
+    vi.useFakeTimers()
+    const advanceBot = vi.fn(() => mockSnapshot)
+    const runtime = new PokerWorkerRuntime({
+      initWasm: vi.fn(async () => undefined),
+      createSession: vi.fn(() => ({
+        snapshot: vi.fn(() => mockSnapshot),
+        applyHumanAction: vi.fn(() => mockSnapshot),
+        advanceBot,
+        resetHand: vi.fn(() => mockSnapshot),
+      })),
+    })
+
+    await runtime.handle({ id: 1, type: 'init', config: mockConfig })
+    const pending = runtime.handle({ id: 2, type: 'advanceBot' })
+
+    await Promise.resolve()
+    expect(advanceBot).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(BOT_MIN_THINK_MS - 1)
+    let settled = false
+    pending.then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(pending).resolves.toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
+    vi.useRealTimers()
+  })
+
+  it('honors a larger forced bot-action delay when requested by the test harness', async () => {
     vi.useFakeTimers()
     const advanceBot = vi.fn(() => mockSnapshot)
     const runtime = new PokerWorkerRuntime({
@@ -120,15 +152,21 @@ describe('PokerWorkerRuntime', () => {
     const pending = runtime.handle({
       id: 2,
       type: 'advanceBot',
-      forceActionDelayMs: 120,
+      forceActionDelayMs: BOT_MIN_THINK_MS + 120,
     })
 
-    await vi.advanceTimersByTimeAsync(100)
-    expect(advanceBot).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(20)
-    await expect(pending).resolves.toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
+    await Promise.resolve()
     expect(advanceBot).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(BOT_MIN_THINK_MS + 119)
+    let settled = false
+    pending.then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(pending).resolves.toEqual({ id: 2, ok: true, snapshot: mockSnapshot })
     vi.useRealTimers()
   })
 
