@@ -98,9 +98,11 @@ impl PostflopSolverBot {
 
         let bot_hole_cards = state.player(bot_player).hole_cards;
         let opponent_player = bot_player.opponent();
-        let opponent_range = self
-            .opponent_range(opponent_player, state, bot_hole_cards)
-            .ok_or(PostflopSolverBotError::OpponentRangeEmpty)?;
+        let Some(opponent_range) = self.opponent_range(opponent_player, state, bot_hole_cards) else {
+            return StubBot
+                .choose_action(state)
+                .map_err(PostflopSolverBotError::Fallback);
+        };
         let bot_range = Range::from_hole_cards([bot_hole_cards]);
         let (button_range, big_blind_range) = if bot_player == Player::Button {
             (bot_range, opponent_range)
@@ -284,9 +286,10 @@ impl Error for PostflopSolverBotError {}
 
 #[cfg(test)]
 mod tests {
-    use gto_core::{HoldemConfig, HoldemHandState, PlayerAction};
+    use gto_core::{Deck, HandPhase, HoldemConfig, HoldemHandState, HoleCards, Player, PlayerAction, default_rng};
 
-    use super::{PostflopSolverBot, scripted_flop_spot_from_state, scripted_river_spot_from_state, scripted_turn_spot_from_state};
+    use super::{PostflopSolverBot, PostflopSolverBotConfig, scripted_flop_spot_from_state, scripted_river_spot_from_state, scripted_turn_spot_from_state};
+    use crate::{AbstractionProfile, OpeningSize, RaiseSize, StreetProfile};
 
     #[test]
     fn scripted_spot_builders_replay_public_history() {
@@ -341,5 +344,207 @@ mod tests {
 
         let action = bot.choose_action(gto_core::Player::Button, &state).unwrap();
         state.apply_action(action).unwrap();
+    }
+
+    #[test]
+    fn postflop_solver_bot_falls_back_when_opponent_range_filters_to_empty() {
+        let bot = PostflopSolverBot::new(PostflopSolverBotConfig {
+            profile: AbstractionProfile::new(
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::BigBlindMultipleBps(25_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+                StreetProfile {
+                    opening_sizes: vec![OpeningSize::PotFractionBps(10_000)],
+                    raise_sizes: vec![],
+                    include_all_in: false,
+                },
+            ),
+            button_base_range: "AsAh".parse().unwrap(),
+            big_blind_base_range: "QcQh".parse().unwrap(),
+            max_opponent_combos: 1,
+            flop_iterations: 1,
+            turn_iterations: 1,
+            river_iterations: 1,
+        });
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["Ah".parse().unwrap(), "Ad".parse().unwrap(), "2c".parse().unwrap()])
+            .unwrap();
+
+        let action = bot.choose_action(Player::BigBlind, &state).unwrap();
+        state.apply_action(action).unwrap();
+    }
+
+    #[test]
+    fn postflop_solver_bot_handles_larger_action_profile_on_flop() {
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::BigBlindMultipleBps(25_000),
+                    OpeningSize::BigBlindMultipleBps(40_000),
+                ],
+                raise_sizes: vec![
+                    RaiseSize::CurrentBetMultipleBps(25_000),
+                    RaiseSize::PotFractionAfterCallBps(10_000),
+                ],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::PotFractionBps(3_300),
+                    OpeningSize::PotFractionBps(6_600),
+                    OpeningSize::PotFractionBps(10_000),
+                ],
+                raise_sizes: vec![
+                    RaiseSize::CurrentBetMultipleBps(25_000),
+                    RaiseSize::PotFractionAfterCallBps(10_000),
+                ],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::PotFractionBps(3_300),
+                    OpeningSize::PotFractionBps(10_000),
+                ],
+                raise_sizes: vec![
+                    RaiseSize::CurrentBetMultipleBps(25_000),
+                    RaiseSize::PotFractionAfterCallBps(10_000),
+                ],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::PotFractionBps(3_300),
+                    OpeningSize::PotFractionBps(10_000),
+                ],
+                raise_sizes: vec![
+                    RaiseSize::CurrentBetMultipleBps(25_000),
+                    RaiseSize::PotFractionAfterCallBps(10_000),
+                ],
+                include_all_in: true,
+            },
+        );
+        let bot = PostflopSolverBot::new(PostflopSolverBotConfig {
+            profile,
+            button_base_range: "AsKd,AhQh,KsQs".parse().unwrap(),
+            big_blind_base_range: "QcJh,QdJd,7c7d".parse().unwrap(),
+            max_opponent_combos: 3,
+            flop_iterations: 1,
+            turn_iterations: 1,
+            river_iterations: 1,
+        });
+        let mut state = HoldemHandState::new(
+            HoldemConfig::new(600, 50, 100).unwrap(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state.apply_action(PlayerAction::Check).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::BetTo(100)).unwrap();
+
+        let action = bot.choose_action(Player::Button, &state).unwrap();
+        state.apply_action(action).unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn postflop_solver_bot_larger_profile_self_play_stays_legal() {
+        let postflop = StreetProfile {
+            opening_sizes: vec![
+                OpeningSize::PotFractionBps(3_300),
+                OpeningSize::PotFractionBps(6_600),
+                OpeningSize::PotFractionBps(10_000),
+            ],
+            raise_sizes: vec![
+                RaiseSize::CurrentBetMultipleBps(25_000),
+                RaiseSize::PotFractionAfterCallBps(10_000),
+            ],
+            include_all_in: true,
+        };
+        let bot = PostflopSolverBot::new(PostflopSolverBotConfig {
+            profile: AbstractionProfile::new(
+                StreetProfile {
+                    opening_sizes: vec![
+                        OpeningSize::BigBlindMultipleBps(25_000),
+                        OpeningSize::BigBlindMultipleBps(40_000),
+                    ],
+                    raise_sizes: vec![
+                        RaiseSize::CurrentBetMultipleBps(25_000),
+                        RaiseSize::PotFractionAfterCallBps(10_000),
+                    ],
+                    include_all_in: true,
+                },
+                postflop.clone(),
+                postflop.clone(),
+                postflop,
+            ),
+            button_base_range: "AsKd,AhQh,KsQs".parse().unwrap(),
+            big_blind_base_range: "QcJh,QdJd,7c7d".parse().unwrap(),
+            max_opponent_combos: 3,
+            flop_iterations: 1,
+            turn_iterations: 1,
+            river_iterations: 1,
+        });
+        let mut rng = default_rng();
+
+        for _ in 0..4 {
+            let mut deck = Deck::standard();
+            deck.shuffle(&mut rng);
+            let button = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+            let big_blind = HoleCards::new(deck.draw().unwrap(), deck.draw().unwrap()).unwrap();
+            let board = [
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+                deck.draw().unwrap(),
+            ];
+            let mut state =
+                HoldemHandState::new(HoldemConfig::new(600, 50, 100).unwrap(), button, big_blind)
+                    .unwrap();
+
+            loop {
+                match state.phase() {
+                    HandPhase::BettingRound { .. } if state.street() == gto_core::Street::Preflop => {
+                        let action = crate::StubBot.choose_action(&state).unwrap();
+                        state.apply_action(action).unwrap();
+                    }
+                    HandPhase::BettingRound { actor, .. } => {
+                        let action = bot.choose_action(actor, &state).unwrap();
+                        state.apply_action(action).unwrap();
+                    }
+                    HandPhase::AwaitingBoard { next_street } => match next_street {
+                        gto_core::Street::Flop => state.deal_flop([board[0], board[1], board[2]]).unwrap(),
+                        gto_core::Street::Turn => state.deal_turn(board[3]).unwrap(),
+                        gto_core::Street::River => state.deal_river(board[4]).unwrap(),
+                        gto_core::Street::Preflop => panic!("cannot await preflop cards"),
+                    },
+                    HandPhase::Terminal { .. } => break,
+                }
+            }
+        }
     }
 }
