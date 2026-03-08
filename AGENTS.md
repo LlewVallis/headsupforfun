@@ -2,6 +2,10 @@
 
 Start with [PLAN.md](./PLAN.md). It is the source of truth for scope, constraints, architecture, testing, performance policy, and milestone order.
 
+## Golden Rule
+
+Assume that you write a lot of buggy code. You should always write strong tests that fully cover all edge-cases. You should have a testing strategy and consider TDD where appropriate. Write a lot of tests.
+
 ## Repo Context
 
 - Goal: pure-Rust heads-up no-limit hold'em solver plus interactive CLI
