@@ -21,8 +21,8 @@ interface PokerCardProps extends HTMLAttributes<HTMLDivElement> {
 export function PokerCard(props: PokerCardProps) {
   const { card = null, hidden = false, tone = 'table', className, ...rest } = props
   const classes = joinClasses(
-    'card-shell relative overflow-hidden rounded-[0.25rem] bg-white shadow-[0_16px_40px_rgba(0,0,0,0.24)]',
-    tone === 'hero' ? 'ring-2 ring-gold-300/45' : 'ring-1 ring-black/12',
+    'card-shell relative overflow-hidden rounded-[0.25rem] bg-white shadow-[0_18px_44px_rgba(0,0,0,0.32)]',
+    tone === 'hero' ? 'ring-2 ring-gold-300/38' : 'ring-1 ring-black/18',
     className,
   )
 
@@ -47,11 +47,11 @@ export function PokerCard(props: PokerCardProps) {
         aria-hidden="true"
         className={joinClasses(
           classes,
-          'grid place-items-center border border-white/8 bg-black/18 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]',
+          'grid place-items-center border border-[#e8d8b6]/9 bg-[#d7d2c2] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]',
         )}
       >
-        <div className="grid h-full w-full place-items-center rounded-[0.2rem] border border-white/6 bg-black/10">
-          <span className="block h-8 w-8 rounded-full border border-white/8 bg-white/4" />
+        <div className="grid h-full w-full place-items-center rounded-[0.2rem] border border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(0,0,0,0.03))]">
+          <span className="block h-8 w-8 rounded-full border border-black/8 bg-white/22" />
         </div>
       </div>
     )
