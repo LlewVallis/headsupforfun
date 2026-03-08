@@ -834,6 +834,29 @@ Validation:
 - Screenshot capture covers visual-card states, bot-thinking state, and bot-action state
 - Manual visual inspection confirms card readability, motion restraint, and a more game-like presentation
 
+### M20. Compact Table Polish And Bot Feedback Cleanup
+
+Deliverables:
+
+- Tighten the overall desktop layout so the full table experience fits more comfortably on common laptop screens without losing the game-first hierarchy
+- Make the hand-recap disclosure affordance more legible, including a larger expand/collapse icon
+- Fix card-face rendering so card art is not visibly clipped by container radius or inner sizing
+- Simplify the action tray by removing redundant descriptive copy and presenting the available actions as a cleaner horizontal control row
+- Keep the bot action bubble visible until the human makes the next move instead of auto-dismissing it on a short timer
+- Reuse the same bubble treatment for bot thinking feedback so the bot panel does not shift when the thinking state appears
+- Reduce layout shift and visual jumping during bot response transitions
+
+Validation:
+
+- Component and browser tests cover persistent bot feedback from bot action through the next human decision
+- Screenshot capture covers opening-hand, bot-thinking, bot-action, and terminal states after the compact pass
+- Manual visual inspection confirms:
+  - the layout fits more comfortably on a typical desktop viewport
+  - the hand-recap toggle is clearly legible
+  - cards are no longer visibly cropped
+  - the action tray reads as a concise play control, not an information panel
+  - bot feedback no longer introduces obvious seat-panel layout shift
+
 Non-goals for the web phase:
 
 - Adding a backend or online multiplayer
