@@ -2509,6 +2509,25 @@ mod tests {
     }
 
     #[test]
+    fn live_blueprint_menu_surfaces_all_in_on_the_opening_hand() {
+        let transcript = capture_session_transcript(
+            b"q\n",
+            CliConfig {
+                seed: 7,
+                max_hands: Some(1),
+                bot_mode: CliBotMode::Blueprint,
+                hybrid_postflop_profile: HybridPostflopProfile::Fast,
+                blueprint_artifact_path: default_full_hand_artifact_path(),
+            },
+        );
+
+        assert!(
+            transcript.contains("6: all-in to 10000"),
+            "expected live blueprint opening menu to contain all-in:\n{transcript}"
+        );
+    }
+
+    #[test]
     fn two_hand_session_rotates_seats_and_carries_bankrolls() {
         let transcript = capture_session_transcript(
             b"fold\nfold\n",

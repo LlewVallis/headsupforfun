@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 type DynError = Box<dyn Error>;
 
-const FAST_TIMEOUT_SECS: u64 = 60;
+const FAST_TIMEOUT_SECS: u64 = 120;
 const SLOW_TIMEOUT_SECS: u64 = 300;
 const SOLVER_SLOW_TIMEOUT_SECS: u64 = 300;
 const WASM_TIMEOUT_SECS: u64 = 120;

@@ -343,6 +343,29 @@ mod tests {
     }
 
     #[test]
+    fn alternating_hands_preserve_total_bankroll_and_rotate_the_button() {
+        let mut match_state = HeadsUpMatchState::new(MatchConfig::default()).unwrap();
+        let (button, big_blind) = sample_hole_cards();
+
+        let mut first_hand = match_state.start_next_hand(button, big_blind).unwrap();
+        first_hand.apply_action(PlayerAction::Fold).unwrap();
+        match_state.complete_hand(&first_hand).unwrap();
+        assert_eq!(match_state.seating().button, MatchPlayer::PlayerOne);
+
+        let mut second_hand = match_state.start_next_hand(button, big_blind).unwrap();
+        assert_eq!(match_state.seating().button, MatchPlayer::PlayerTwo);
+        second_hand.apply_action(PlayerAction::Fold).unwrap();
+        match_state.complete_hand(&second_hand).unwrap();
+
+        assert_eq!(
+            match_state.bankroll(MatchPlayer::PlayerOne) + match_state.bankroll(MatchPlayer::PlayerTwo),
+            20_000
+        );
+        assert_eq!(match_state.bankroll(MatchPlayer::PlayerOne), 10_000);
+        assert_eq!(match_state.bankroll(MatchPlayer::PlayerTwo), 10_000);
+    }
+
+    #[test]
     fn complete_hand_rejects_non_terminal_states() {
         let mut match_state = HeadsUpMatchState::new(MatchConfig::default()).unwrap();
         let (button, big_blind) = sample_hole_cards();

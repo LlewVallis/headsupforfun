@@ -243,13 +243,33 @@ pub fn abstract_actions(
         }
     }
 
-    if let Some(all_in_total) = legal.all_in_to {
-        if street_profile.include_all_in && !actions.contains(&AbstractAction::AllIn(all_in_total)) {
-            actions.push(AbstractAction::AllIn(all_in_total));
-        }
-    }
+    maybe_append_live_all_in_action(&mut actions, actor_snapshot, legal, street_profile);
 
     Ok(actions)
+}
+
+fn maybe_append_live_all_in_action(
+    actions: &mut Vec<AbstractAction>,
+    actor_snapshot: gto_core::PlayerSnapshot,
+    legal: gto_core::LegalActions,
+    street_profile: &StreetProfile,
+) {
+    if !street_profile.include_all_in {
+        return;
+    }
+
+    let all_in_total = actor_snapshot.street_contribution + actor_snapshot.stack;
+    let all_in_is_legal = legal.all_in_to == Some(all_in_total)
+        || legal
+            .bet_range
+            .is_some_and(|range| range.max_total == all_in_total)
+        || legal
+            .raise_range
+            .is_some_and(|range| range.max_total == all_in_total);
+
+    if all_in_is_legal && !actions.contains(&AbstractAction::AllIn(all_in_total)) {
+        actions.push(AbstractAction::AllIn(all_in_total));
+    }
 }
 
 fn opening_total(state: &HoldemHandState, size: OpeningSize) -> Option<Chips> {
@@ -353,6 +373,29 @@ mod tests {
     }
 
     #[test]
+    fn abstraction_surfaces_live_all_in_for_deep_preflop_opening_spots() {
+        let state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+
+        let actions = abstract_actions(&state, &crate::smoke_blueprint_profile()).unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                AbstractAction::Fold,
+                AbstractAction::Call,
+                AbstractAction::RaiseTo(250),
+                AbstractAction::RaiseTo(400),
+                AbstractAction::RaiseTo(700),
+                AbstractAction::AllIn(10_000),
+            ]
+        );
+    }
+
+    #[test]
     fn abstraction_uses_pot_fraction_after_call_for_raises() {
         let mut state = HoldemHandState::new(
             HoldemConfig::default(),
@@ -392,6 +435,110 @@ mod tests {
 
         let actions = abstract_actions(&state, &profile).unwrap();
         assert!(actions.contains(&AbstractAction::RaiseTo(500)));
+    }
+
+    #[test]
+    fn abstraction_surfaces_live_all_in_for_deep_postflop_opening_spots() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(400)).unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![
+                    OpeningSize::PotFractionBps(3_300),
+                    OpeningSize::PotFractionBps(6_600),
+                    OpeningSize::PotFractionBps(10_000),
+                ],
+                raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                AbstractAction::Check,
+                AbstractAction::BetTo(264),
+                AbstractAction::BetTo(528),
+                AbstractAction::BetTo(800),
+                AbstractAction::AllIn(9_600),
+            ]
+        );
+    }
+
+    #[test]
+    fn abstraction_surfaces_live_all_in_when_facing_a_deep_postflop_bet() {
+        let mut state = HoldemHandState::new(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+        )
+        .unwrap();
+        state.apply_action(PlayerAction::RaiseTo(400)).unwrap();
+        state.apply_action(PlayerAction::Call).unwrap();
+        state
+            .deal_flop(["2c".parse().unwrap(), "3d".parse().unwrap(), "4h".parse().unwrap()])
+            .unwrap();
+        state.apply_action(PlayerAction::BetTo(264)).unwrap();
+
+        let profile = AbstractionProfile::new(
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![RaiseSize::CurrentBetMultipleBps(25_000)],
+                include_all_in: true,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+            StreetProfile {
+                opening_sizes: vec![],
+                raise_sizes: vec![],
+                include_all_in: false,
+            },
+        );
+
+        let actions = abstract_actions(&state, &profile).unwrap();
+        assert_eq!(
+            actions,
+            vec![
+                AbstractAction::Fold,
+                AbstractAction::Call,
+                AbstractAction::RaiseTo(660),
+                AbstractAction::AllIn(9_600),
+            ]
+        );
     }
 
     #[test]

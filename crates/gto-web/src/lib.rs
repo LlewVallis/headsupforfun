@@ -655,6 +655,21 @@ mod tests {
     }
 
     #[test]
+    fn new_session_exposes_live_all_in_choice_on_the_opening_hand() {
+        let session = BrowserSession::new(WebSessionConfig::default()).unwrap();
+        let snapshot = session.snapshot().unwrap();
+
+        assert!(
+            snapshot
+                .legal_actions
+                .iter()
+                .any(|action| action.id.starts_with("allIn:")),
+            "expected real browser session legal actions to include an all-in choice: {:?}",
+            snapshot.legal_actions
+        );
+    }
+
+    #[test]
     fn terminal_snapshots_reveal_both_players_hole_cards_even_without_showdown() {
         let mut session = BrowserSession::new(WebSessionConfig {
             seed: 5,

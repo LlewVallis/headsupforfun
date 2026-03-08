@@ -1236,6 +1236,21 @@ mod tests {
     }
 
     #[test]
+    fn effective_stack_bucket_uses_the_shorter_uneven_stack() {
+        let state = HoldemHandState::new_with_starting_stacks(
+            HoldemConfig::default(),
+            "AsKd".parse().unwrap(),
+            "QcJh".parse().unwrap(),
+            7_500,
+            2_500,
+        )
+        .unwrap();
+
+        let context = preflop_context_from_state(&state).unwrap();
+        assert_eq!(context.effective_stack_bucket, EffectiveStackBucket::Bb16To25);
+    }
+
+    #[test]
     fn stack_aware_artifact_rejects_older_fixed_stack_payloads() {
         let legacy_json = serde_json::json!({
             "format_version": 1,

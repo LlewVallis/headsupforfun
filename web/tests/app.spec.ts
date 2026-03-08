@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('plays a complete browser hand and deals the next one', async ({ page }) => {
+test('plays a complete browser hand and can continue after the terminal state', async ({ page }) => {
   await page.goto('/')
 
   await expect(
@@ -18,20 +18,34 @@ test('plays a complete browser hand and deals the next one', async ({ page }) =>
   await expect(page.getByLabel('Bot panel')).toContainText('Solver Bot')
   await expect(page.getByText('Hand 1')).toBeVisible()
   await expect(page.getByText('Seed')).toHaveCount(0)
+  await expect(page.getByLabel('Action tray').getByRole('button', { name: /All-in to/i })).toBeVisible()
 
-  for (let step = 0; step < 32; step += 1) {
+  for (let step = 0; step < 64; step += 1) {
     if (!(await clickPreferredAction(page))) {
       break
     }
   }
 
-  await expect(page.getByRole('button', { name: 'Deal next hand' })).toBeVisible()
   await expect(page.getByLabel('Bot panel').getByRole('img', { name: /of/i })).toHaveCount(2)
+  const dealNextHandButton = page.getByRole('button', { name: 'Deal next hand' })
+  if (await dealNextHandButton.isVisible().catch(() => false)) {
+    await dealNextHandButton.click()
+    await expect(page.getByText('Hand 2')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
+    return
+  }
 
-  await page.getByRole('button', { name: 'Deal next hand' }).click()
-
-  await expect(page.getByText('Hand 2')).toBeVisible()
+  const startNewMatchButton = page.getByRole('button', { name: 'Start new match' })
+  await expect(startNewMatchButton).toBeVisible()
+  await startNewMatchButton.click()
+  await expect(page.getByText('Hand 1')).toBeVisible()
   await expect(page.getByRole('button', { name: /Call|Check/ })).toBeVisible()
+})
+
+test('surfaces a live all-in button from the real worker-backed opening hand', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByLabel('Action tray').getByRole('button', { name: /All-in to/i })).toBeVisible()
 })
 
 test('shows a recoverable error when the table fails to initialize', async ({ page }) => {
