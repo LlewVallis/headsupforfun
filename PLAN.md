@@ -242,6 +242,7 @@ Recommended order:
 - Every bug fix adds a regression test before or alongside the fix.
 - Default test commands must stay fast enough for constant use by an autonomous agent.
 - Slow tests and long training runs must be explicitly opt-in.
+- UI-facing milestones are not done until automated screenshot capture and manual visual inspection have both passed on the affected states.
 
 ### Test Layers
 
@@ -285,6 +286,12 @@ Recommended order:
 - Golden transcripts for complete CLI sessions under fixed seeds
 - Strategy artifact compatibility tests
 - Reproductions of previously fixed solver or tree-construction bugs
+
+#### Visual Validation
+
+- Deterministic screenshot capture for important UI states
+- Manual inspection of those screenshots before closing visual/product-facing milestones
+- Manual release-preview inspection for layout, hierarchy, readability, and obvious animation issues
 
 #### Soak Tests
 
@@ -632,7 +639,9 @@ Constraints for this phase:
 - Browser integration through a dedicated Rust WASM adapter crate
 - Heavy WASM solver work must run off the main browser thread via a Web Worker
 - Production web builds use optimized release-mode WASM artifacts
-- Production web play should target the equivalent of the CLI hybrid `--postflop-profile play` mode when browser latency is acceptable
+- Production web play uses the stronger fixed `hybrid-play` bot path in the worker
+- Normal player-facing web sessions use internal random seeds; explicit seeding is reserved for tests and debug workflows
+- Persistent cross-hand stack carry is deferred; normal web play still starts each hand at the standard fresh `100bb` state
 
 ### Web Architecture Strategy
 
@@ -641,7 +650,8 @@ Constraints for this phase:
 3. Run the WASM-backed poker session inside a dedicated Web Worker so heavy bot actions do not block rendering or input.
 4. Keep the web UI client-only and statically hosted.
 5. Reuse the existing abstract action menu instead of introducing arbitrary bet sizing.
-6. Treat runtime postflop solving in the browser as a product requirement for the stronger production build, but gate it behind measured browser responsiveness during implementation.
+6. Treat runtime postflop solving in the browser as the shipped product path for normal play, with worker-based fallback and error handling kept internal rather than exposed as a player-facing bot selector.
+7. Keep deterministic seeding available in the adapter and worker client for tests, screenshots, and debug tooling, but do not expose seed controls in the normal player UI.
 
 ### Frontend Testing Strategy
 
@@ -652,6 +662,7 @@ Recommended layers:
 - `Vitest` plus `React Testing Library` for component, hook, and client-state tests
 - Worker-focused tests for command/response flow, initialization errors, and typed message handling
 - `Playwright` for browser integration tests that play seeded hands end to end
+- `Playwright` screenshot capture for stable visual states such as opening hand, hero turn, bot thinking, terminal hand, and recoverable error states
 - Deterministic seeded fixtures and debug states so UI and browser tests can reproduce the same poker situations reliably
 
 Principles:
@@ -660,7 +671,15 @@ Principles:
 - Test the typed frontend client separately from the React component tree
 - Prefer browser integration coverage for real user flows instead of relying only on DOM snapshots
 - Add regression coverage for worker startup failures, artifact-load failures, and slow/failed bot action fallbacks
+- Require manual visual inspection of captured screenshots and a local browser run for product-facing UI changes
 - Keep the fast frontend test loop small enough for frequent use; reserve heavier Playwright scenarios for a slower explicit lane
+
+Screenshot workflow:
+
+- Provide a dedicated command such as `npm run screenshots`
+- Write captured images to a predictable local path such as `web/artifacts/screenshots/`
+- Treat screenshot artifacts as a review tool, not a committed golden source by default
+- Re-capture and review key states whenever layout, visual hierarchy, card rendering, animation, or typography changes
 
 ### Recommended Workspace Layout Update
 
@@ -765,8 +784,8 @@ Validation:
 Deliverables:
 
 - Refine the single-page layout for a desktop-first polished experience
-- Add explicit bot/play-mode configuration suitable for shipped play
-- Support the stronger production bot mode equivalent to CLI hybrid `--postflop-profile play`
+- Add the stronger production bot mode equivalent to CLI hybrid `--postflop-profile play`
+- Keep any explicit bot/play-mode configuration limited to development, testing, or transitional UX while the game-first product surface is still being shaped
 - Build the production site with optimized release-mode WASM artifacts
 - Keep the stronger production bot mode behind the worker-based execution path
 - Preserve a fallback mode if the stronger browser solver path proves too slow on some environments
@@ -777,12 +796,51 @@ Validation:
 - Manual desktop smoke run confirms that the stronger production bot mode is functional
 - Browser-facing tests cover mode selection and fallback behavior
 
+### M18. Game-First Web Product Redesign
+
+Deliverables:
+
+- Rework the web UI from a dashboard-style tool into a game-first poker table experience
+- Add a better page title, browser metadata, favicon, and in-product iconography aligned with the poker theme
+- Remove player-facing seed controls, solver terminology, worker terminology, and bot-mode selection from the normal game screen
+- Fix the shipped web experience to the stronger `hybrid-play` bot path
+- Generate random seeds internally for normal play while preserving deterministic seed hooks for tests and screenshots
+- Center each player's identity, stack, and cards into compact player panels instead of splitting them across the table edges
+- Remove the hand-status panel from the main game screen
+- Reduce action history to a secondary surface instead of a primary dashboard panel
+- Keep the current per-hand fresh `100bb` reset model for now; persistent cross-hand stack carry remains deferred
+
+Validation:
+
+- Browser tests confirm the normal player UI no longer exposes seed or bot-mode controls
+- Screenshot capture covers opening-hand, player-turn, terminal-hand, and error states after the redesign
+- Manual visual inspection confirms table-first hierarchy, centered player presentation, and no obvious layout collisions or overlap bugs
+
+### M19. Visual Cards, Typography, And Bot Presence
+
+Deliverables:
+
+- Replace string-based card rendering with open-source visual card assets
+- Record the source and license for any adopted card-face and card-back assets
+- Replace the current serif typography with a cleaner game-appropriate font system
+- Improve spatial layout so player information reads as one centered unit near each seat
+- Add visible bot thinking feedback near the bot panel
+- Add a visible bot action reveal near the bot panel before control returns to the player
+- Add restrained animation for thinking, action reveal, and street/card transitions without turning the experience into a noisy casino effect
+
+Validation:
+
+- Component and browser tests cover bot-thinking, bot-action, and return-to-player state transitions
+- Screenshot capture covers visual-card states, bot-thinking state, and bot-action state
+- Manual visual inspection confirms card readability, motion restraint, and a more game-like presentation
+
 Non-goals for the web phase:
 
 - Adding a backend or online multiplayer
 - Introducing arbitrary chip-size input
 - Replacing the reusable Rust solver core with frontend logic
 - A separate web-only performance milestone; responsiveness should instead be validated inside the playable web milestones above
+- Persistent cross-hand stack carry or uneven-stack match rules until the core session and solver model are extended to support them cleanly
 
 ## Risk Register
 
